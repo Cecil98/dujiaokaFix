@@ -1,0 +1,43 @@
+FROM alpine:3.13
+
+LABEL maintainer="dujiaokaFix"
+
+ENV TZ=Asia/Shanghai \
+    INSTALL=true \
+    COMPOSER_ALLOW_SUPERUSER=1 \
+    COMPOSER_MEMORY_LIMIT=-1
+
+RUN apk --no-cache add bash php7 php7-fpm php7-opcache php7-mysqli php7-json php7-openssl php7-curl \
+    php7-zlib php7-xml php7-phar php7-intl php7-dom php7-xmlreader php7-ctype php7-session \
+    php7-zip php7-fileinfo php7-bcmath php7-tokenizer php7-xmlwriter php7-pcntl php7-simplexml \
+    php7-mbstring php7-gd php7-redis php7-pdo php7-pdo_mysql nginx supervisor curl git unzip tzdata \
+    && adduser -D -g '' application \
+    && mkdir -p /run/nginx /etc/supervisor/conf.d
+
+WORKDIR /app
+
+COPY . /app
+COPY conf/default.conf /etc/nginx/http.d/default.conf
+COPY conf/fpm-pool.conf /etc/php7/php-fpm.d/www.conf
+COPY conf/php.ini /etc/php7/conf.d/custom.ini
+COPY conf/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY conf/start.sh /start.sh
+COPY conf/start-hook.sh /app/start-hook.sh
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+RUN set -xe \
+    && composer install --ignore-platform-reqs --no-dev --optimize-autoloader -vvv \
+    && mv /app/storage /app/storage_bak \
+    && mkdir -p /app/storage /app/public/uploads /app/bootstrap/cache \
+    && sed -i "s?\$proxies;?\$proxies=\'\*\*\';?" /app/app/Http/Middleware/TrustProxies.php \
+    && rm -f /app/.env \
+    && chown -R application:application /app \
+    && chmod -R 0755 /app \
+    && chmod +x /start.sh /app/start-hook.sh \
+    && chmod -R 0775 /app/storage /app/storage_bak /app/bootstrap/cache /app/public/uploads \
+    && rm -rf /root/.composer/cache /tmp/*
+
+EXPOSE 80
+
+ENTRYPOINT [ "/start.sh" ]

@@ -1,0 +1,19 @@
+services:
+  web:
+    platform: linux/arm64
+    build:
+      context: .
+      dockerfile: Dockerfile-ARM64
+    container_name: dujiaoka
+    ports:
+      - "80:80"
+    volumes:
+      - ${DATA_DIR:-./data}/dujiaoka/.env:/app/.env
+      - ${DATA_DIR:-./data}/dujiaoka/install.lock:/app/install.lock
+      - ${DATA_DIR:-./data}/dujiaoka/storage:/app/storage
+      - ${DATA_DIR:-./data}/dujiaoka/public/uploads:/app/public/uploads
+    environment:
+      INSTALL: "${INSTALL:-true}"
+      TZ: Asia/Shanghai
+    tty: true
+    restart: always
