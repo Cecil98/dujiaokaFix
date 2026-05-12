@@ -48,6 +48,8 @@ class PaypalPayController extends PayController
                 ->get();
             $shipping = 0;
             $description = $this->order->title;
+            $paypalTotal = (string) $total;
+            $context = $this->buildOrderContextToken($this->order, ['paypal_total' => $paypalTotal]);
             $payer = new Payer();
             $payer->setPaymentMethod('paypal');
             $item = new Item();
@@ -61,7 +63,17 @@ class PaypalPayController extends PayController
             $transaction = new Transaction();
             $transaction->setAmount($amount)->setItemList($itemList)->setDescription($description)->setInvoiceNumber($this->order->order_sn);
             $redirectUrls = new RedirectUrls();
-            $redirectUrls->setReturnUrl(route('paypal-return', ['success' => 'ok', 'orderSN' => $this->order->order_sn]))->setCancelUrl(route('paypal-return', ['success' => 'no', 'orderSN' => $this->order->order_sn]));
+            $redirectUrls->setReturnUrl(route('paypal-return', [
+                'success' => 'ok',
+                'orderSN' => $this->order->order_sn,
+                'paypal_total' => $paypalTotal,
+                'context' => $context,
+            ]))->setCancelUrl(route('paypal-return', [
+                'success' => 'no',
+                'orderSN' => $this->order->order_sn,
+                'paypal_total' => $paypalTotal,
+                'context' => $context,
+            ]));
             $payment = new Payment();
             $payment->setIntent('sale')->setPayer($payer)->setRedirectUrls($redirectUrls)->setTransactions([$transaction]);
             $payment->create($paypal);
@@ -85,17 +97,22 @@ class PaypalPayController extends PayController
         $orderSN = $request->input('orderSN');
         if ($success == 'no' || empty($paymentId) || empty($payerID)) {
             // 取消支付
-            redirect(url('detail-order-sn', ['orderSN' => $payerID]));
+            if (!empty($orderSN)) {
+                return redirect(url('detail-order-sn', ['orderSN' => $orderSN]));
+            }
+            return 'error';
         }
         $order = $this->orderService->detailOrderSN($orderSN);
         if (!$order) {
             return 'error';
         }
+        $paypalTotal = (string) $request->input('paypal_total', '');
+        $hasValidContext = $this->validateOrderContextToken($order, $request->input('context'), ['paypal_total' => $paypalTotal]);
         $payGateway = $this->payService->detail($order->pay_id);
         if (!$payGateway) {
             return 'error';
         }
-        if($payGateway->pay_handleroute != '/pay/paypal'){
+        if (!$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/paypal')) {
             return 'error';
         }
         $paypal = new ApiContext(
@@ -109,7 +126,34 @@ class PaypalPayController extends PayController
         $execute = new PaymentExecution();
         $execute->setPayerId($payerID);
         try {
-            $payment->execute($execute, $paypal);
+            $executedPayment = $payment->execute($execute, $paypal);
+            if ($executedPayment instanceof Payment) {
+                $payment = $executedPayment;
+            }
+            if ($payment->getState() !== 'approved') {
+                throw new \Exception('paypal state invalid');
+            }
+            $transactions = $payment->getTransactions();
+            if (empty($transactions)) {
+                throw new \Exception('paypal transaction missing');
+            }
+            $transaction = $transactions[0];
+            $paymentAmount = $transaction->getAmount();
+            $expectedPaypalTotal = $hasValidContext
+                ? $paypalTotal
+                : (string) Currency::convert()
+                    ->from('CNY')
+                    ->to('USD')
+                    ->amount($order->actual_price)
+                    ->round(2)
+                    ->get();
+            if (
+                $transaction->getInvoiceNumber() !== $orderSN ||
+                $paymentAmount->getCurrency() !== self::Currency ||
+                bccomp((string) $paymentAmount->getTotal(), $expectedPaypalTotal, 2) !== 0
+            ) {
+                throw new \Exception('paypal payment mismatch');
+            }
             $this->orderProcessService->completedOrder($orderSN, $order->actual_price, $paymentId);
             Log::info("paypal支付成功",  ['支付成功，支付ID【' . $paymentId . '】,支付人ID【' . $payerID . '】']);
         } catch (\Exception $e) {

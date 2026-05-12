@@ -114,7 +114,7 @@
                             </tbody>
                         </table>
                         <p class="btn" style="text-align: center">
-                            <a href="{{ url('pay-gateway', ['handle' => urlencode($pay['pay_handleroute']),'payway' => $pay['pay_check'], 'orderSN' => $order_sn]) }}">
+                            <a href="{{ url('pay-gateway', ['payway' => $pay['pay_check'], 'orderSN' => $order_sn]) }}">
                                 {{ __('dujiaoka.pay_immediately') }}
                             </a>
                         </p>
@@ -143,5 +143,4 @@
     </div>
     </body>
 @endsection
-
 

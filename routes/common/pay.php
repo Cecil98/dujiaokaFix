@@ -8,7 +8,8 @@
  */
 use Illuminate\Support\Facades\Route;
 
-Route::get('pay-gateway/{handle}/{payway}/{orderSN}', 'PayController@redirectGateway');
+Route::get('pay-gateway/{payway}/{orderSN}', 'PayController@redirectGateway');
+Route::get('pay-gateway/{handle}/{payway}/{orderSN}', 'PayController@redirectGatewayLegacy');
 
 // 支付相关
 Route::group(['prefix' => 'pay', 'namespace' => 'Pay', 'middleware' => ['dujiaoka.pay_gate_way']], function () {

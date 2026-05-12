@@ -56,7 +56,19 @@ class WepayController extends PayController
     public function notifyUrl()
     {
         $xml = file_get_contents('php://input');
-        $arr = json_decode(json_encode(simplexml_load_string($xml, 'SimpleXMLElement', LIBXML_NOCDATA)), true);
+        if (\PHP_MAJOR_VERSION < 8) {
+            libxml_disable_entity_loader(true);
+        }
+        libxml_use_internal_errors(true);
+        $sxe = simplexml_load_string($xml, 'SimpleXMLElement', LIBXML_NOCDATA);
+        libxml_use_internal_errors(false);
+        if ($sxe === false) {
+            return 'error';
+        }
+        $arr = json_decode(json_encode($sxe), true);
+        if (empty($arr['out_trade_no'])) {
+            return 'error';
+        }
         $oid = $arr['out_trade_no'];
         $order = $this->orderService->detailOrderSN($oid);
         if (!$order) {
@@ -66,7 +78,7 @@ class WepayController extends PayController
         if (!$payGateway) {
             return 'error';
         }
-        if($payGateway->pay_handleroute != '/pay/wepay'){
+        if (!$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/wepay')) {
             return 'error';
         }
         $config = [

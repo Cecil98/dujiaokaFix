@@ -27,10 +27,11 @@ class StripeController extends PayController
                     \Stripe\Stripe::setApiKey($this->payGateway->merchant_id);
                     $amount = bcmul($this->order->actual_price, 100, 2);
                     $price = $this->order->actual_price;
-                    $usd = bcmul($this->getUsdCurrency($this->order->actual_price), 100, 2);
+                    $usd = bcmul($this->getUsdCurrency($this->order->actual_price), 100, 0);
                     $orderid = $this->order->order_sn;
                     $pk = $this->payGateway->merchant_id;
-                    $return_url = site_url() . $this->payGateway->pay_handleroute . '/return_url/?orderid=' . $this->order->order_sn;
+                    $context = $this->buildOrderContextToken($this->order, ['stripe_usd_amount' => $usd]);
+                    $return_url = site_url() . $this->payGateway->pay_handleroute . '/return_url/?orderid=' . $this->order->order_sn . '&context=' . $context;
                     $html = "<html class=\"js cssanimations\">
 <head lang=\"en\">
     <meta charset=\"UTF-8\">
@@ -338,14 +339,14 @@ class StripeController extends PayController
         // Submit the form
         //form.submit();
         $.ajax({
-            url: '/pay/stripe/charge/?orderid=$orderid&stripeToken=' + token.id,
+            url: '/pay/stripe/charge/?orderid=$orderid&context=$context&stripeToken=' + token.id,
             type: 'GET',
             success: function (result) {
                 if (result == \"success\") {
                     $(\".cardpay_content\").html(\"\");
                     $(\".cardpay_content\").html(\"<p class='am-alert am-alert-success'>支付成功，正在跳转页面</p>\");
                     window.setTimeout(function () {
-                        location.href = \"/detail-order-sn/$orderid\"
+                        location.href = \"$return_url\"
                     }, 800);
                 } else {
                     $(\".am-alert\").show();
@@ -376,14 +377,14 @@ class StripeController extends PayController
 
     function paymentcheck() {
         $.ajax({
-            url: '/pay/stripe/check/?orderid=$orderid&source=' + source,
+            url: '/pay/stripe/check/?orderid=$orderid&context=$context&stripe_usd_amount=$usd&source=' + source,
             type: 'GET',
             success: function (result) {
                 if (result == \"success\") {
                     $(\".wcpay-qrcode\").html(\"\");
                     $(\".wcpay-qrcode\").html(\"<p class='am-alert am-alert-success'>支付成功，正在跳转页面</p>\");
                     window.setTimeout(function () {
-                        location.href = \"/detail-order-sn/$orderid\"
+                        location.href = \"$return_url\"
                     }, 800);
                 } else {
                     setTimeout(\"paymentcheck()\", 1000);
@@ -434,22 +435,36 @@ class StripeController extends PayController
     {
 
         $data = $request->all();
+        if (!$this->hasRequiredFields($data, ['orderid', 'source'])) {
+            return 'fail';
+        }
         $cacheord = $this->orderService->detailOrderSN($data['orderid']);
         if (!$cacheord) {
             return redirect(url('detail-order-sn', ['orderSN' => $data['orderid']]));
         }
         $payGateway = $this->payService->detail($cacheord->pay_id);
+        if (!$payGateway || !$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/stripe')) {
+            return redirect(url('detail-order-sn', ['orderSN' => $data['orderid']]));
+        }
+        if ($request->filled('context') && !$this->validateOrderContextToken($cacheord, $request->input('context'))) {
+            return redirect(url('detail-order-sn', ['orderSN' => $data['orderid']]));
+        }
         \Stripe\Stripe::setApiKey($payGateway -> merchant_pem);
         $source_object = \Stripe\Source::retrieve($data['source']);
-        //die($source_object);
-        if ($source_object->status == 'chargeable') {
-            \Stripe\Charge::create([
+        $expectedAmount = (int) bcmul($cacheord->actual_price, 100, 0);
+        if (
+            $source_object->status == 'chargeable' &&
+            $source_object->currency === 'cny' &&
+            (int) $source_object->amount === $expectedAmount &&
+            $source_object->owner->name == $data['orderid']
+        ) {
+            $charge = \Stripe\Charge::create([
                 'amount' => $source_object->amount,
                 'currency' => $source_object->currency,
                 'source' => $data['source'],
             ]);
-            if ($source_object->owner->name == $data['orderid']) {
-                $this->orderProcessService->completedOrder($data['orderid'], $source_object->amount / 100, $source_object->id);
+            if ($charge->status === 'succeeded') {
+                $this->orderProcessService->completedOrder($data['orderid'], $cacheord->actual_price, $charge->id);
             }
         }
         return redirect(url('detail-order-sn', ['orderSN' => $data['orderid']]));
@@ -459,23 +474,45 @@ class StripeController extends PayController
     {
 
         $data = $request->all();
+        if (!$this->hasRequiredFields($data, ['orderid', 'source'])) {
+            return 'fail';
+        }
         $cacheord = $this->orderService->detailOrderSN($data['orderid']);
         if (!$cacheord) {
             //可能已异步回调成功，跳转
             return 'fail';
         } else {
+            $stripeUsdAmount = (int) $request->input(
+                'stripe_usd_amount',
+                bcmul($this->getUsdCurrency($cacheord->actual_price), 100, 0)
+            );
+            if (
+                $request->filled('context') &&
+                !$this->validateOrderContextToken($cacheord, $request->input('context'), ['stripe_usd_amount' => $stripeUsdAmount])
+            ) {
+                return 'fail';
+            }
             $payGateway = $this->payService->detail($cacheord->pay_id);
+            if (!$payGateway || !$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/stripe')) {
+                return 'fail';
+            }
             \Stripe\Stripe::setApiKey($payGateway -> merchant_pem);
             $source_object = \Stripe\Source::retrieve($data['source']);
-            if ($source_object->status == 'chargeable') {
-                \Stripe\Charge::create([
-                    'amount' => $source_object->amount,
-                    'currency' => $source_object->currency,
-                    'source' => $data['source'],
-                ]);
+            if (
+                $source_object->status !== 'chargeable' ||
+                $source_object->currency !== 'usd' ||
+                (int) $source_object->amount !== $stripeUsdAmount ||
+                $source_object->owner->name != $data['orderid']
+            ) {
+                return 'fail';
             }
-            if ($source_object->status == 'consumed' && $source_object->owner->name == $data['orderid']) {
-                $this->orderProcessService->completedOrder($data['orderid'], $cacheord->actual_price, $source_object->id);
+            $charge = \Stripe\Charge::create([
+                'amount' => $source_object->amount,
+                'currency' => $source_object->currency,
+                'source' => $data['source'],
+            ]);
+            if ($charge->status === 'succeeded') {
+                $this->orderProcessService->completedOrder($data['orderid'], $cacheord->actual_price, $charge->id);
                 return 'success';
             } else {
                 return 'fail';
@@ -487,13 +524,22 @@ class StripeController extends PayController
     public function charge(Request $request)
     {
         $data = $request->all();
+        if (!$this->hasRequiredFields($data, ['orderid', 'stripeToken'])) {
+            return 'fail';
+        }
         $cacheord = $this->orderService->detailOrderSN($data['orderid']);
         if (!$cacheord) {
             //可能已异步回调成功，跳转
             return 'fail';
         } else {
             try {
+                if ($request->filled('context') && !$this->validateOrderContextToken($cacheord, $request->input('context'))) {
+                    return 'fail';
+                }
                 $payGateway = $this->payService->detail($cacheord->pay_id);
+                if (!$payGateway || !$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/stripe')) {
+                    return 'fail';
+                }
                 \Stripe\Stripe::setApiKey($payGateway -> merchant_pem);
                 $result = \Stripe\Charge::create([
                     'amount' => bcmul($this->getUsdCurrency($cacheord->actual_price), 100,0),
@@ -501,7 +547,7 @@ class StripeController extends PayController
                     'source' => $data['stripeToken'],
                 ]);
                 if ($result->status == 'succeeded') {
-                    $this->orderProcessService->completedOrder($data['orderid'], $cacheord->actual_price, $data['stripeToken']);
+                    $this->orderProcessService->completedOrder($data['orderid'], $cacheord->actual_price, $result->id);
                     return 'success';
                 }
                 return $result;

@@ -39,7 +39,7 @@
             </div>
             <div class="text-center">
                 {{-- 立即支付 --}}
-            	<a href="{{ url('pay-gateway', ['handle' => urlencode($pay['pay_handleroute']),'payway' => $pay['pay_check'], 'orderSN' => $order_sn]) }}"
+                <a href="{{ url('pay-gateway', ['payway' => $pay['pay_check'], 'orderSN' => $order_sn]) }}"
                    class="btn btn-danger">
                     {{ __('hyper.bill_pay_immediately') }}
                 </a>

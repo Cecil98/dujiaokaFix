@@ -71,6 +71,9 @@ class TokenPayController extends PayController
     public function notifyUrl(Request $request)
     {
         $data = $request->all();
+        if (!$this->hasRequiredFields($data, ['OutOrderId', 'ActualAmount', 'Id', 'Signature'])) {
+            return 'fail';
+        }
         $order = $this->orderService->detailOrderSN($data['OutOrderId']);
         if (!$order) {
             return 'fail';
@@ -79,17 +82,17 @@ class TokenPayController extends PayController
         if (!$payGateway) {
             return 'fail';
         }
-        if($payGateway->pay_handleroute != 'pay/tokenpay'){
+        if (!$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/tokenpay')) {
             return 'fail';
         }
         //合法的数据
 		$signature = $this->VerifySign($data, $payGateway->merchant_key);
-        if ($data['Signature'] != $signature) { //不合法的数据
+        if (!$this->secureCompare($signature, $data['Signature'])) { //不合法的数据
             return 'fail';  //返回失败 继续补单
         } else {
             //合法的数据
             //业务处理
-            $this->orderProcessService->completedOrder($data['OutOrderId'], $data['ActualAmount'], $data['Id']);
+            $this->orderProcessService->completedOrder($data['OutOrderId'], (float) $data['ActualAmount'], $data['Id']);
             return 'ok';
         }
     }

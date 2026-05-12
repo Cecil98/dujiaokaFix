@@ -81,6 +81,9 @@ class PaysapiController extends PayController
     public function notifyUrl(Request $request)
     {
         $data = $request->post();
+        if (!$this->hasRequiredFields($data, ['orderid', 'orderuid', 'paysapi_id', 'price', 'realprice', 'key'])) {
+            return 'fail';
+        }
         $order = $this->orderService->detailOrderSN($data['orderid']);
         if (!$order) {
             return 'error';
@@ -89,16 +92,19 @@ class PaysapiController extends PayController
         if (!$payGateway) {
             return 'error';
         }
-        if($payGateway->pay_handleroute != '/pay/paysapi'){
+        if (!$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/paysapi')) {
             return 'error';
         }
-        $temps = md5($data['orderid'] . $data['orderuid'] . $data['paysapi_id'] . $data['price'] . $data['realprice'] . $payGateway->merchant_pem);
-        if ($temps != $data['key']){
+        if ($data['orderuid'] !== $order->email) {
+            return 'fail';
+        }
+        $expectedSign = md5($data['orderid'] . $data['orderuid'] . $data['paysapi_id'] . $data['price'] . $data['realprice'] . $payGateway->merchant_pem);
+        if (!$this->secureCompare($expectedSign, $data['key'])) {
             return 'fail';
         }else{
             //校验key成功，是自己人。执行自己的业务逻辑：加余额，订单付款成功，装备购买成功等等。
             //业务处理
-            $this->orderProcessService->completedOrder($data['orderid'], $data['price'], $data['paysapi_id']);
+            $this->orderProcessService->completedOrder($data['orderid'], (float) $data['realprice'], $data['paysapi_id']);
             return 'success';
         }
     }

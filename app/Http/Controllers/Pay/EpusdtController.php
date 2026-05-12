@@ -71,6 +71,9 @@ class EpusdtController extends PayController
     public function notifyUrl(Request $request)
     {
         $data = $request->all();
+        if (!$this->hasRequiredFields($data, ['order_id', 'amount', 'trade_id', 'signature'])) {
+            return 'fail';
+        }
         $order = $this->orderService->detailOrderSN($data['order_id']);
         if (!$order) {
             return 'fail';
@@ -79,16 +82,16 @@ class EpusdtController extends PayController
         if (!$payGateway) {
             return 'fail';
         }
-        if($payGateway->pay_handleroute != 'pay/epusdt'){
+        if (!$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/epusdt')) {
             return 'fail';
         }
         $signature = $this->epusdtSign($data, $payGateway->merchant_id);
-        if ($data['signature'] != $signature) { //不合法的数据
+        if (!$this->secureCompare($signature, $data['signature'])) { //不合法的数据
             return 'fail';  //返回失败 继续补单
         } else {
             //合法的数据
             //业务处理
-            $this->orderProcessService->completedOrder($data['order_id'], $data['amount'], $data['trade_id']);
+            $this->orderProcessService->completedOrder($data['order_id'], (float) $data['amount'], $data['trade_id']);
             return 'ok';
         }
     }

@@ -54,6 +54,9 @@ class MapayController extends PayController
     public function notifyUrl(Request $request)
     {
         $data = $request->post();
+        if (!$this->hasRequiredFields($data, ['pay_id', 'pay_no', 'money', 'param', 'sign'])) {
+            return 'fail';
+        }
         $order = $this->orderService->detailOrderSN($data['pay_id']);
         if (!$order) {
             return 'fail';
@@ -62,15 +65,19 @@ class MapayController extends PayController
         if (!$payGateway) {
             return 'fail';
         }
-        if($payGateway->pay_handleroute != '/pay/mapay'){
+        if (!$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/mapay')) {
+            return 'fail';
+        }
+        if ($data['param'] !== $payGateway->pay_check) {
             return 'fail';
         }
         $query = signquery_string($data);
-        if (!$data['pay_no'] || md5($query . $payGateway->merchant_pem ) != $data['sign']) { //不合法的数据
+        $expectedSign = md5($query . $payGateway->merchant_pem);
+        if (!$this->secureCompare($expectedSign, $data['sign'])) { //不合法的数据
             return 'fail';  //返回失败 继续补单
         } else { //合法的数据
             //业务处理
-            $this->orderProcessService->completedOrder($data['pay_id'], $data['money'], $data['pay_id']);
+            $this->orderProcessService->completedOrder($data['pay_id'], (float) $data['money'], $data['pay_no']);
             return 'success';
         }
     }
@@ -79,5 +86,4 @@ class MapayController extends PayController
 
 
 }
-
 

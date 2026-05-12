@@ -59,6 +59,9 @@ class YipayController extends PayController
     public function notifyUrl(Request $request)
     {
         $data = $request->all();
+        if (!$this->hasRequiredFields($data, ['out_trade_no', 'trade_no', 'money', 'sign'])) {
+            return 'fail';
+        }
         $order = $this->orderService->detailOrderSN($data['out_trade_no']);
         if (!$order) {
             return 'fail';
@@ -67,7 +70,13 @@ class YipayController extends PayController
         if (!$payGateway) {
             return 'fail';
         }
-        if($payGateway->pay_handleroute != '/pay/yipay'){
+        if (!$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/yipay')) {
+            return 'fail';
+        }
+        if (
+            (isset($data['trade_status']) && !in_array($data['trade_status'], ['TRADE_SUCCESS', 'TRADE_FINISHED'], true)) ||
+            (isset($data['status']) && !in_array((string) $data['status'], ['1', 'success'], true))
+        ) {
             return 'fail';
         }
         ksort($data); //重新排序$data数组
@@ -82,12 +91,13 @@ class YipayController extends PayController
                 $sign .= "$key=$val"; //拼接为url参数形式
             }
         }
-        if (!$data['trade_no'] || md5($sign . $payGateway->merchant_pem) != $data['sign']) { //不合法的数据
+        $expectedSign = md5($sign . $payGateway->merchant_pem);
+        if (!$this->secureCompare($expectedSign, $data['sign'])) { //不合法的数据
             return 'fail';  //返回失败 继续补单
         } else {
             //合法的数据
             //业务处理
-            $this->orderProcessService->completedOrder($data['out_trade_no'], $data['money'], $data['trade_no']);
+            $this->orderProcessService->completedOrder($data['out_trade_no'], (float) $data['money'], $data['trade_no']);
             return 'success';
         }
     }

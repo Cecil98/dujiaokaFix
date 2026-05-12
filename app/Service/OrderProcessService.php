@@ -382,8 +382,13 @@ class OrderProcessService
      * @copyright assimon<ashang@utf8.hk>
      * @link      http://utf8.hk/
      */
-    public function completedOrder(string $orderSN, float $actualPrice, string $tradeNo = '')
+    public function completedOrder(string $orderSN, float $actualPrice, string $tradeNo)
     {
+        $tradeNo = trim($tradeNo);
+        if ($tradeNo === '') {
+            throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
+        }
+
         DB::beginTransaction();
         try {
             // 得到订单详情
@@ -391,9 +396,23 @@ class OrderProcessService
             if (!$order) {
                 throw new \Exception(__('dujiaoka.prompt.order_does_not_exist'));
             }
-            // 订单已经处理
-            if ($order->status == Order::STATUS_COMPLETED) {
-                throw new \Exception(__('dujiaoka.prompt.order_status_completed'));
+            if ($order->status !== Order::STATUS_WAIT_PAY) {
+                if (
+                    $order->status == Order::STATUS_COMPLETED
+                    && !empty($order->trade_no)
+                    && hash_equals((string) $order->trade_no, $tradeNo)
+                ) {
+                    DB::commit();
+                    return $order;
+                }
+                throw new \Exception(__('dujiaoka.prompt.order_already_paid'));
+            }
+            $tradeExists = Order::query()
+                ->where('trade_no', $tradeNo)
+                ->where('order_sn', '!=', $orderSN)
+                ->exists();
+            if ($tradeExists) {
+                throw new \Exception(__('dujiaoka.prompt.abnormal_payment_channel'));
             }
             $bccomp = bccomp($order->actual_price, $actualPrice, 2);
             // 金额不一致

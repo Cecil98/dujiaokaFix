@@ -94,15 +94,82 @@ class PayController extends BaseController
         if (!$this->payGateway) {
             throw new RuleValidationException(__('dujiaoka.prompt.pay_gateway_does_not_exist'));
         }
-        // 临时保存支付方式
-        $this->order->pay_id = $this->payGateway->id;
-        $this->order->save();
+        if (!empty($this->order->pay_id) && (int) $this->order->pay_id !== (int) $this->payGateway->id) {
+            throw new RuleValidationException(__('dujiaoka.prompt.pay_gateway_does_not_exist'));
+        }
+        if (empty($this->order->pay_id)) {
+            // 兼容历史异常订单；正常订单在创建时已经保存 pay_id。
+            $this->order->pay_id = $this->payGateway->id;
+            $this->order->save();
+        }
+    }
+
+    protected function isExpectedGatewayRoute(string $actualRoute, string $expectedRoute): bool
+    {
+        return trim($actualRoute, '/') === trim($expectedRoute, '/');
+    }
+
+    protected function hasRequiredFields(array $data, array $fields): bool
+    {
+        foreach ($fields as $field) {
+            if (!isset($data[$field]) || $data[$field] === '') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    protected function secureCompare($expected, $actual): bool
+    {
+        if (!is_string($expected) || !is_string($actual)) {
+            return false;
+        }
+
+        return hash_equals($expected, $actual);
+    }
+
+    protected function buildOrderContextToken(Order $order, array $extra = []): string
+    {
+        ksort($extra);
+
+        $payload = [
+            $order->order_sn,
+            (string) $order->pay_id,
+            number_format((float) $order->actual_price, 2, '.', ''),
+        ];
+        foreach ($extra as $key => $value) {
+            $payload[] = $key . '=' . $value;
+        }
+
+        return hash_hmac('sha256', implode('|', $payload), $this->getOrderContextSecret());
+    }
+
+    protected function validateOrderContextToken(Order $order, ?string $contextToken, array $extra = []): bool
+    {
+        if (!is_string($contextToken) || $contextToken === '') {
+            return false;
+        }
+
+        return hash_equals($this->buildOrderContextToken($order, $extra), $contextToken);
+    }
+
+    private function getOrderContextSecret(): string
+    {
+        $appKey = (string) config('app.key', '');
+        if (strpos($appKey, 'base64:') === 0) {
+            $decoded = base64_decode(substr($appKey, 7), true);
+            if ($decoded !== false) {
+                return $decoded;
+            }
+        }
+
+        return $appKey;
     }
 
     /**
      * 网关处理.
      *
-     * @param string $handle 跳转方法
      * @param string $payway 支付标识
      * @param string $orderSN 订单.
      *
@@ -110,21 +177,37 @@ class PayController extends BaseController
      * @copyright assimon<ashang@utf8.hk>
      * @link      http://utf8.hk/
      */
-    public function redirectGateway(string $handle,string $payway, string $orderSN)
+    public function redirectGateway(string $payway, string $orderSN)
     {
         try {
             $this->checkOrder($orderSN);
+            $this->payGateway = $this->payService->detailByCheck($payway);
+            if (!$this->payGateway || (int) $this->payGateway->id !== (int) $this->order->pay_id) {
+                throw new RuleValidationException(__('dujiaoka.prompt.pay_gateway_does_not_exist'));
+            }
             $bccomp = bccomp($this->order->actual_price, 0.00, 2);
             // 如果订单金额为0 代表无需支付，直接成功
             if ($bccomp == 0) {
-                $this->orderProcessService->completedOrder($this->order->order_sn, 0.00);
+                $this->orderProcessService->completedOrder(
+                    $this->order->order_sn,
+                    0.00,
+                    'FREE-' . $this->order->order_sn
+                );
                 return redirect(url('detail-order-sn', ['orderSN' => $this->order->order_sn]));
             }
-            return redirect(url(urldecode($handle), ['payway' => $payway, 'orderSN' => $orderSN]));
+            return redirect(url($this->payGateway->pay_handleroute, [
+                'payway' => $this->payGateway->pay_check,
+                'orderSN' => $this->order->order_sn,
+            ]));
         } catch (RuleValidationException $exception) {
             return $this->err($exception->getMessage());
         }
 
+    }
+
+    public function redirectGatewayLegacy(string $handle, string $payway, string $orderSN)
+    {
+        return $this->redirectGateway($payway, $orderSN);
     }
 
 }

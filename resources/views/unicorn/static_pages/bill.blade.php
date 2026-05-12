@@ -44,7 +44,7 @@
                                     <div class="mb-1"><label>{{ __('order.fields.order_created') }}：</label><span>{{ $created_at }}</span></div>
 
                                     <div class="pay-now text-center mt-3">
-                                        <a href="{{ url('pay-gateway', ['handle' => urlencode($pay['pay_handleroute']),'payway' => $pay['pay_check'], 'orderSN' => $order_sn]) }}" type="button" class="btn btn-dark"><i class="ali-icon">&#xe673;</i>
+                                        <a href="{{ url('pay-gateway', ['payway' => $pay['pay_check'], 'orderSN' => $order_sn]) }}" type="button" class="btn btn-dark"><i class="ali-icon">&#xe673;</i>
                                             {{ __('dujiaoka.pay_immediately') }}
                                         </a>
                                     </div>
