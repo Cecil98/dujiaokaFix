@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Quality checks for backend changes"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer data flow checks"}
+{"file": ".trellis/tasks/10-24-php83-upgrade/research/upgrade-summary.md", "reason": "Acceptance criteria, DB and security checklist"}

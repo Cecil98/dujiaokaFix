@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend conventions index for the Laravel upgrade"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Database change rules (additive, idempotent)"}
+{"file": ".trellis/tasks/10-24-php83-upgrade/research/upgrade-summary.md", "reason": "Condensed upgrade research: versions, payment scope, DB migration, security"}
