@@ -55,11 +55,19 @@ class MailSend implements ShouldQueue
      */
     public function handle()
     {
+        $to = trim((string) $this->to);
+
+        if ($to === '' || ! filter_var($to, FILTER_VALIDATE_EMAIL)) {
+            \Illuminate\Support\Facades\Log::warning('MailSend skipped: invalid recipient', [
+                'recipient' => $this->to,
+            ]);
+            return;
+        }
+
         $body = $this->content;
         $title = $this->title;
         $sysConfig = cache('system-setting') ?: [];
         MailConfigService::apply($sysConfig);
-        $to = $this->to;
         Mail::send('email.mail', ['body' => $body], function ($message) use ($to, $title){
             $message->to($to)->subject($title);
         });

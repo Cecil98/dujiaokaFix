@@ -182,9 +182,9 @@ if (! function_exists('md5_signquery')) {
         $sign = '';
         $urls = '';
         foreach ($parameter as $key => $val) {
-            if ($val == '') continue;
-            if ($key != 'sign') {
-                if ($sign != '') {
+            if ($val === '') continue;
+            if ($key !== 'sign') {
+                if ($sign !== '') {
                     $sign .= "&";
                     $urls .= "&";
                 }
@@ -206,7 +206,7 @@ if (! function_exists('signquery_string')) {
         reset($data); //内部指针指向数组中的第一个元素
         $sign = ''; //加密字符串初始化
         foreach ($data as $key => $val) {
-            if ($val == '' || $key == 'sign') continue; //跳过这些不签名
+            if ($val === '' || $key === 'sign') continue; //跳过这些不签名
             if ($sign) $sign .= '&'; //第一个字符串签名不加& 其他加&连接起来参数
             $sign .= "$key=$val"; //拼接为url参数形式
         }

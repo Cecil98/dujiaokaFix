@@ -54,9 +54,9 @@ class EpusdtController extends PayController
         $sign = '';
         $urls = '';
         foreach ($parameter as $key => $val) {
-            if ($val == '') continue;
-            if ($key != 'signature') {
-                if ($sign != '') {
+            if ($val === '') continue;
+            if ($key !== 'signature') {
+                if ($sign !== '') {
                     $sign .= "&";
                     $urls .= "&";
                 }

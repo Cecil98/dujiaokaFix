@@ -397,9 +397,10 @@ class OrderProcessService
                 throw new \Exception(__('dujiaoka.prompt.order_does_not_exist'));
             }
             if ($order->status !== Order::STATUS_WAIT_PAY) {
+                // Duplicate gateway notification: the trade number already
+                // belongs to this order, so acknowledge without shipping again.
                 if (
-                    $order->status == Order::STATUS_COMPLETED
-                    && !empty($order->trade_no)
+                    !empty($order->trade_no)
                     && hash_equals((string) $order->trade_no, $tradeNo)
                 ) {
                     DB::commit();

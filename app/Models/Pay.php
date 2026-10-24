@@ -12,6 +12,12 @@ class Pay extends BaseModel
 
     protected $table = 'pays';
 
+    protected $casts = [
+        'merchant_id' => \App\Casts\EncryptedOrPlaintext::class,
+        'merchant_key' => \App\Casts\EncryptedOrPlaintext::class,
+        'merchant_pem' => \App\Casts\EncryptedOrPlaintext::class,
+    ];
+
     /**
      * 跳转
      */

@@ -29,9 +29,9 @@ class YipayController extends PayController
             reset($parameter); //内部指针指向数组中的第一个元素
             $sign = '';
             foreach ($parameter as $key => $val) {
-                if ($key == "sign" || $key == "sign_type" || $val == "") continue;
-                if ($key != 'sign') {
-                    if ($sign != '') {
+                if ($key === "sign" || $key === "sign_type" || $val === "") continue;
+                if ($key !== 'sign') {
+                    if ($sign !== '') {
                         $sign .= "&";
                     }
                     $sign .= "$key=$val"; //拼接为url参数形式
@@ -83,9 +83,9 @@ class YipayController extends PayController
         reset($data); //内部指针指向数组中的第一个元素
         $sign = '';
         foreach ($data as $key => $val) {
-            if ($key == "sign" || $key == "sign_type" || $val == "") continue;
-            if ($key != 'sign') {
-                if ($sign != '') {
+            if ($key === "sign" || $key === "sign_type" || $val === "") continue;
+            if ($key !== 'sign') {
+                if ($sign !== '') {
                     $sign .= "&";
                 }
                 $sign .= "$key=$val"; //拼接为url参数形式
@@ -96,8 +96,16 @@ class YipayController extends PayController
             return 'fail';  //返回失败 继续补单
         } else {
             //合法的数据
-            //业务处理
-            $this->orderProcessService->completedOrder($data['out_trade_no'], (float) $data['money'], $data['trade_no']);
+            //业务处理；金额不一致/重复交易号等业务异常对网关返回 fail，避免 500
+            try {
+                $this->orderProcessService->completedOrder($data['out_trade_no'], (float) $data['money'], $data['trade_no']);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Yipay notify rejected: '.$e->getMessage(), [
+                    'order_sn' => $data['out_trade_no'],
+                    'trade_no' => $data['trade_no'],
+                ]);
+                return 'fail';
+            }
             return 'success';
         }
     }

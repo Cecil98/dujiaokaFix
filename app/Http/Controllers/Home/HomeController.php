@@ -199,7 +199,7 @@ class HomeController extends BaseController
                 $envTemp = str_replace('{' . $key . '}', $item, $envTemp);
             }
             // 写入配置
-            file_put_contents($envPath, $envTemp);
+            file_put_contents($envPath, $envTemp, LOCK_EX);
             // 导入sql
             DB::unprepared(file_get_contents($installSql));
             // 初始化后台管理员账号，避免使用默认的 admin/admin
@@ -213,7 +213,7 @@ class HomeController extends BaseController
                 throw new \RuntimeException('后台管理员账号初始化失败');
             }
             // 写入安装锁
-            file_put_contents($installLock, 'install ok');
+            file_put_contents($installLock, 'install ok', LOCK_EX);
             return 'success';
         } catch (\RedisException $exception) {
             \Illuminate\Support\Facades\Log::error('Install Redis error: '.$exception->getMessage());

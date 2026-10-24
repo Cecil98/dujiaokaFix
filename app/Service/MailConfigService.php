@@ -14,6 +14,11 @@ class MailConfigService
     {
         $encryption = $sysConfig['encryption'] ?? 'ssl';
         $scheme = $encryption === 'ssl' ? 'smtps' : 'smtp';
+        $fromAddress = trim((string) ($sysConfig['from_address'] ?? ''));
+
+        if ($fromAddress === '') {
+            $fromAddress = (string) (config('mail.from.address') ?: 'noreply@localhost');
+        }
 
         config([
             'mail.default' => $sysConfig['driver'] ?? 'smtp',
@@ -23,7 +28,7 @@ class MailConfigService
             'mail.mailers.smtp.port' => (int) ($sysConfig['port'] ?? 465),
             'mail.mailers.smtp.username' => $sysConfig['username'] ?? '',
             'mail.mailers.smtp.password' => $sysConfig['password'] ?? '',
-            'mail.from.address' => $sysConfig['from_address'] ?? '',
+            'mail.from.address' => $fromAddress,
             'mail.from.name' => $sysConfig['from_name'] ?? '独角发卡',
         ]);
 

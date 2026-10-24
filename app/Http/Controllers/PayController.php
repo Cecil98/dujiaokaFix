@@ -112,7 +112,7 @@ class PayController extends BaseController
     protected function hasRequiredFields(array $data, array $fields): bool
     {
         foreach ($fields as $field) {
-            if (!isset($data[$field]) || $data[$field] === '') {
+            if (!isset($data[$field]) || !is_scalar($data[$field]) || $data[$field] === '') {
                 return false;
             }
         }

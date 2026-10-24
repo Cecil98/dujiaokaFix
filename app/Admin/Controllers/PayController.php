@@ -27,9 +27,9 @@ class PayController extends AdminController
             $grid->column('pay_name');
             $grid->column('pay_check');
             $grid->column('pay_method')->select(PayModel::getMethodMap());
-            $grid->column('merchant_id')->limit(20);
-            $grid->column('merchant_key')->limit(20);
-            $grid->column('merchant_pem')->limit(20);
+            $grid->column('merchant_id')->display(fn ($value) => $value ? '********' : '');
+            $grid->column('merchant_key')->display(fn ($value) => $value ? '********' : '');
+            $grid->column('merchant_pem')->display(fn ($value) => $value ? '********' : '');
             $grid->column('pay_client')->select(PayModel::getClientMap());
             $grid->column('pay_handleroute');
             $grid->column('is_open')->switch();
@@ -67,9 +67,9 @@ class PayController extends AdminController
         return Show::make($id, new Pay(), function (Show $show) {
             $show->field('id');
             $show->field('pay_name');
-            $show->field('merchant_id');
-            $show->field('merchant_key');
-            $show->field('merchant_pem');
+            $show->field('merchant_id')->as(fn ($value) => $value ? '********' : '');
+            $show->field('merchant_key')->as(fn ($value) => $value ? '********' : '');
+            $show->field('merchant_pem')->as(fn ($value) => $value ? '********' : '');
             $show->field('pay_check');
             $show->field('pay_client')->as(function ($payClient) {
                 if ($payClient == PayModel::PAY_CLIENT_PC) {
@@ -108,9 +108,17 @@ class PayController extends AdminController
         return Form::make(new Pay(), function (Form $form) {
             $form->display('id');
             $form->text('pay_name')->required();
-            $form->text('merchant_id')->required();
-            $form->textarea('merchant_key');
-            $form->textarea('merchant_pem')->required();
+            $form->text('merchant_id')
+                ->required()
+                ->customFormat(fn ($data, $value) => $value ? '********' : '')
+                ->help('已保存的值会显示为 ********；保持原样表示不修改');
+            $form->textarea('merchant_key')
+                ->customFormat(fn ($data, $value) => $value ? '********' : '')
+                ->help('已保存的值会显示为 ********；保持原样表示不修改');
+            $form->textarea('merchant_pem')
+                ->required()
+                ->customFormat(fn ($data, $value) => $value ? '********' : '')
+                ->help('已保存的值会显示为 ********；保持原样表示不修改');
             $form->text('pay_check')->required();
             $form->radio('pay_client')
                 ->options(PayModel::getClientMap())
@@ -125,6 +133,16 @@ class PayController extends AdminController
             $form->display('created_at');
             $form->display('updated_at');
             $form->disableDeleteButton();
+
+            $form->saving(function (Form $form) {
+                foreach (['merchant_id', 'merchant_key', 'merchant_pem'] as $field) {
+                    $value = $form->input($field);
+
+                    if ($value === null || $value === '' || preg_match('/^\*+$/', (string) $value)) {
+                        $form->deleteInput($field);
+                    }
+                }
+            });
         });
     }
 }

@@ -64,3 +64,9 @@ DEALLOCATE PREPARE stmt;
 -- 4) Only enable epay (yipay); keep other channels in DB but disabled
 UPDATE `pays` SET `is_open` = 0;
 UPDATE `pays` SET `is_open` = 1 WHERE `pay_handleroute` = '/pay/yipay';
+
+-- 5) Payment credentials are encrypted with APP_KEY; the old varchar(200)
+--    merchant_id cannot hold the encrypted payload. TEXT is backwards
+--    compatible with the old code (it only reads the value).
+ALTER TABLE `pays`
+  MODIFY `merchant_id` TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT '商户 ID（加密后需要更长空间）';

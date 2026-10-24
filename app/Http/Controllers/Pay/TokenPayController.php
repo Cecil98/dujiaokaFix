@@ -55,8 +55,8 @@ class TokenPayController extends PayController
         $sign = '';
         $urls = '';
         foreach ($parameter as $key => $val) {
-            if ($key != 'Signature') {
-                if ($sign != '') {
+            if ($key !== 'Signature') {
+                if ($sign !== '') {
                     $sign .= "&";
                     $urls .= "&";
                 }
