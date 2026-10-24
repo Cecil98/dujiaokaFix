@@ -59,8 +59,9 @@ class OrderService
     public function validatorCreateOrder(Request $request): void
     {
         $validator = Validator::make($request->all(), [
-            'gid' => 'required' ,
+            'gid' => ['required', 'integer'],
             'email' => ['required', 'email'],
+            'coupon_code' => ['nullable', 'string', 'max:255'],
             'payway' => ['required', 'integer'],
             'search_pwd' => [new SearchPwd()],
             'by_amount' => ['required', 'integer', 'min:1'],
@@ -129,8 +130,8 @@ class OrderService
      */
     public function validatorGoods(Request $request): Goods
     {
-        // 获得商品详情
-        $goods = $this->goodsService->detail($request->input('gid'));
+        // 获得商品详情（validatorCreateOrder 已保证 gid 是整数）
+        $goods = $this->goodsService->detail((int) $request->input('gid'));
         // 商品状态验证
         $this->goodsService->validatorGoodsStatus($goods);
         // 如果有限购
@@ -182,8 +183,15 @@ class OrderService
     {
         // 如果提交了优惠码
         if ($request->filled('coupon_code')) {
+            $couponCode = $request->input('coupon_code');
+            if (! is_scalar($couponCode)) {
+                throw new RuleValidationException(__('dujiaoka.prompt.server_illegal_request'));
+            }
             // 查询优惠码是否存在
-            $coupon = $this->couponService->withHasGoods($request->input('coupon_code'), $request->input('gid'));
+            $coupon = $this->couponService->withHasGoods(
+                trim((string) $couponCode),
+                (int) $request->input('gid')
+            );
             // 此商品没有这个优惠码
             if (empty($coupon)) {
                 throw new RuleValidationException(__('dujiaoka.prompt.coupon_does_not_exist'));
@@ -215,7 +223,7 @@ class OrderService
         // 代充框验证
         if ($goods->type == Goods::MANUAL_PROCESSING && !empty($goods->other_ipu_cnf)) {
             // 如果有其他输入框 判断其他输入框内容  然后载入信息
-            $formatIpt = format_charge_input($goods->other_ipu_cnf);
+            $formatIpt = format_charge_input($goods->other_ipu_cnf) ?: [];
             foreach ($formatIpt as $item) {
                 if ($item['rule'] && !$request->filled($item['field'])) {
                     $errMessage = $item['desc'] . __('dujiaoka.prompt.can_not_be_empty');

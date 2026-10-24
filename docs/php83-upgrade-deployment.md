@@ -486,10 +486,11 @@ systemctl restart php8.3-fpm
 4. **`INSTALL=false`**：已有站点必须保持 false；首次安装临时 true，安装完成立刻改回。
 5. **`pays.is_open`**：升级脚本会关闭其他渠道和未配置/占位符的易支付行，但不会覆盖已配置易支付行的手动开关（PQ-01：出厂占位符 `商户号` / `密钥` 不可用）；如确需其他渠道，升级后手动开启。
 6. **`box/spout`**：`dcat/easy-excel` 依赖的导出库已 abandoned，但没有已知安全公告；后续可评估替代。
-7. **静态审计**：完整动态利用审计可运行 `.pi/workflows/php-audit-full.js`（需隔离环境）；本仓库已做 PHP_AUDIT_SKILLS 静态审计 + 定向复核，报告见 `docs/security-audit/dujiaoka-php83/审计报告.md`，整改记录见同目录 `整改说明.md`。
-8. **系统设置不要在 cache 里裸奔**：新版本将系统设置用 `APP_KEY` 加密后写入 `admin_settings`（`slug=system-setting`），cache 只做加速；执行 `cache:clear` / `optimize:clear` 后会自动从数据库恢复。旧版本只存在 cache，升级后请先打开后台保存一次系统设置，再执行任何清理；如果 cache 里还有旧配置，可执行 `php artisan system-setting:persist` 落库。
-9. **不要执行 `optimize:clear` 清理配置**：它包含 `cache:clear`，会清掉旧版仅存于 cache 的 Telegram / Bark / SMTP / 极验等设置。需要清配置缓存时只执行 `config:clear` 和 `view:clear`。
-10. **镜像**：代码分支 `upgrade/php83` 和 tag `v2.1.0-php83` 已推送到 GitHub；Docker 镜像仍需你按实际镜像仓库构建/推送，或使用自己的 CI。
+7. **运行时类型扫描**：PHP 8.3 / Carbon 3 下的旧配置字符串、null 上传、cookie 解析、缺失邮件模板等路径已修复，详见 `docs/php83-runtime-safety-scan.md`；默认禁用的支付渠道启用前仍需单独回归。
+8. **静态审计**：完整动态利用审计可运行 `.pi/workflows/php-audit-full.js`（需隔离环境）；本仓库已做 PHP_AUDIT_SKILLS 静态审计 + 定向复核，报告见 `docs/security-audit/dujiaoka-php83/审计报告.md`，整改记录见同目录 `整改说明.md`。
+9. **系统设置不要在 cache 里裸奔**：新版本将系统设置用 `APP_KEY` 加密后写入 `admin_settings`（`slug=system-setting`），cache 只做加速；执行 `cache:clear` / `optimize:clear` 后会自动从数据库恢复。旧版本只存在 cache，升级后请先打开后台保存一次系统设置，再执行任何清理；如果 cache 里还有旧配置，可执行 `php artisan system-setting:persist` 落库。
+10. **不要执行 `optimize:clear` 清理配置**：它包含 `cache:clear`，会清掉旧版仅存于 cache 的 Telegram / Bark / SMTP / 极验等设置。需要清配置缓存时只执行 `config:clear` 和 `view:clear`。
+11. **镜像**：代码分支 `upgrade/php83` 和 tag `v2.1.0-php83` 已推送到 GitHub；Docker 镜像仍需你按实际镜像仓库构建/推送，或使用自己的 CI。
 
 ---
 

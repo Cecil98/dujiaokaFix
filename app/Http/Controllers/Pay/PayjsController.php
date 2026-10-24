@@ -49,7 +49,10 @@ class PayjsController extends PayController
     public function notifyUrl(Request $request)
     {
         $orderSN = $request->input('out_trade_no');
-        $order = $this->orderService->detailOrderSN($orderSN);
+        if (! is_scalar($orderSN) || trim((string) $orderSN) === '') {
+            return 'fail';
+        }
+        $order = $this->orderService->detailOrderSN(trim((string) $orderSN));
         if (!$order) {
             return 'error';
         }

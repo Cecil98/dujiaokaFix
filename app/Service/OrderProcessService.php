@@ -249,7 +249,7 @@ class OrderProcessService
         $wholesalePrice = 0; // 优惠单价
         $wholesaleTotalPrice = 0; // 优惠总价
         if ($this->goods->wholesale_price_cnf) {
-            $formatWholesalePrice = format_wholesale_price($this->goods->wholesale_price_cnf);
+            $formatWholesalePrice = format_wholesale_price($this->goods->wholesale_price_cnf) ?: [];
             foreach ($formatWholesalePrice as $item) {
                 if ($this->buyAmount >= $item['number']) {
                     $wholesalePrice = $item['price'];
@@ -512,7 +512,7 @@ class OrderProcessService
         $order->save();
         // 邮件数据
         $mailData = [
-            'created_at' => $order->create_at,
+            'created_at' => $order->created_at,
             'product_name' => $order->goods->gd_name,
             'webname' => dujiaoka_config_get('text_logo', '独角数卡'),
             'weburl' => config('app.url') ?? 'http://dujiaoka.com',
@@ -521,13 +521,15 @@ class OrderProcessService
             'order_id' => $order->order_sn,
             'buy_amount' => $order->buy_amount,
             'ord_price' => $order->actual_price,
-            'created_at' => $order->created_at,
         ];
         $tpl = $this->emailtplService->detailByToken('manual_send_manage_mail');
-        $mailBody = replace_mail_tpl($tpl, $mailData);
+        $mailBody = replace_mail_tpl($tpl ? $tpl->toArray() : [], $mailData);
         $manageMail = dujiaoka_config_get('manage_email', '');
-        // 邮件发送
-        MailSend::dispatch($manageMail, $mailBody['tpl_name'], $mailBody['tpl_content'])->afterCommit();
+        $manageMail = is_scalar($manageMail) ? trim((string) $manageMail) : '';
+        // 邮件模板/收件人缺失时不要 500，订单已经进入待处理状态。
+        if (is_array($mailBody) && $manageMail !== '') {
+            MailSend::dispatch($manageMail, $mailBody['tpl_name'], $mailBody['tpl_content'])->afterCommit();
+        }
         return $order;
     }
 
@@ -564,7 +566,7 @@ class OrderProcessService
         }
         // 邮件数据
         $mailData = [
-            'created_at' => $order->create_at,
+            'created_at' => $order->created_at,
             'product_name' => $order->goods->gd_name,
             'webname' => dujiaoka_config_get('text_logo', '独角数卡'),
             'weburl' => config('app.url') ?? 'http://dujiaoka.com',
@@ -575,9 +577,11 @@ class OrderProcessService
             'ord_price' => $order->actual_price,
         ];
         $tpl = $this->emailtplService->detailByToken('card_send_user_email');
-        $mailBody = replace_mail_tpl($tpl, $mailData);
-        // 邮件发送
-        MailSend::dispatch($order->email, $mailBody['tpl_name'], $mailBody['tpl_content'])->afterCommit();
+        $mailBody = replace_mail_tpl($tpl ? $tpl->toArray() : [], $mailData);
+        // 邮件模板缺失时不要影响已完成的订单。
+        if (is_array($mailBody)) {
+            MailSend::dispatch($order->email, $mailBody['tpl_name'], $mailBody['tpl_content'])->afterCommit();
+        }
         return $order;
     }
 

@@ -42,6 +42,19 @@ if (! function_exists('replace_mail_tpl')) {
 }
 
 
+if (! function_exists('dujiaoka_config_string')) {
+
+    /**
+     * 读取字符串类型的系统设置，避免旧 cache 中的 null/数组污染模板名。
+     */
+    function dujiaoka_config_string(string $key, string $default = ''): string
+    {
+        $value = dujiaoka_config_get($key, $default);
+
+        return is_string($value) && $value !== '' ? $value : $default;
+    }
+}
+
 if (! function_exists('dujiaoka_config_get')) {
 
     /**

@@ -70,15 +70,18 @@ class OrderController extends BaseController
             $otherIpt = $this->orderService->validatorChargeInput($goods, $request);
             $this->orderProcessService->setOtherIpt($otherIpt);
             // 数量
-            $this->orderProcessService->setBuyAmount($request->input('by_amount'));
+            $this->orderProcessService->setBuyAmount((int) $request->input('by_amount'));
             // 支付方式
-            $this->orderProcessService->setPayID($request->input('payway'));
+            $this->orderProcessService->setPayID((int) $request->input('payway'));
             // 下单邮箱
-            $this->orderProcessService->setEmail($request->input('email'));
+            $this->orderProcessService->setEmail((string) $request->input('email'));
             // ip地址
             $this->orderProcessService->setBuyIP($request->getClientIp());
             // 查询密码
-            $this->orderProcessService->setSearchPwd($request->input('search_pwd', ''));
+            $searchPwd = $request->input('search_pwd', '');
+            $this->orderProcessService->setSearchPwd(
+                is_scalar($searchPwd) ? trim((string) $searchPwd) : ''
+            );
             // 创建订单
             $order = $this->orderProcessService->createOrder();
             DB::commit();

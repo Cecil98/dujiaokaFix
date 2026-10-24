@@ -26,9 +26,9 @@ class EmailTest extends Form
      */
     public function handle(array $input)
     {
-      $to = $input['to'];
-      $title = $input['title'];
-      $body = $input['body'];
+      $to = (string) ($input['to'] ?? '');
+      $title = (string) ($input['title'] ?? '');
+      $body = (string) ($input['body'] ?? '');
       $sysConfig = SystemSettingService::get();
       MailConfigService::apply($sysConfig);
 	  try

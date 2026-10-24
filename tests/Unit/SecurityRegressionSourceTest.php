@@ -179,6 +179,22 @@ class SecurityRegressionSourceTest extends TestCase
         ]);
     }
 
+    public function testOrderInputsAndEmailTemplatesAreNullSafe(): void
+    {
+        $this->assertSourceContains('app/Service/OrderService.php', [
+            "'gid' => ['required', 'integer']",
+            "'coupon_code' => ['nullable', 'string', 'max:255']",
+            'is_scalar($couponCode)',
+        ]);
+        $this->assertSourceContains('app/Service/EmailtplService.php', [
+            'public function detailByToken(string $token): ?Emailtpl',
+        ]);
+        $this->assertSourceContains('app/Service/OrderProcessService.php', [
+            'is_array($mailBody) && $manageMail !== \'\'',
+            'format_wholesale_price($this->goods->wholesale_price_cnf) ?: []',
+        ]);
+    }
+
     public function testOrderCookieCannotCrashAfterCommit(): void
     {
         $this->assertSourceContains('app/Http/Controllers/Home/OrderController.php', [

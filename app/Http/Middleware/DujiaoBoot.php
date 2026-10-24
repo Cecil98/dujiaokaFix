@@ -22,7 +22,7 @@ class DujiaoBoot
             return redirect(url('install'));
         }
         // 浏览器检测
-        $userAgent = $request->header('user-agent');
+        $userAgent = (string) $request->header('user-agent', '');
         $nowUri = site_url() . $request->path();
         $tplPath = 'common/notencent';
         if (
@@ -36,6 +36,7 @@ class DujiaoBoot
         }
         // 语言检测
         $lang = dujiaoka_config_get('language', 'zh_CN');
+        $lang = is_string($lang) && $lang !== '' ? $lang : 'zh_CN';
         app()->setLocale($lang);
         // 极验
         $geetest = dujiaoka_config_get('is_open_geetest', BaseModel::STATUS_CLOSE);

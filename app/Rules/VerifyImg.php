@@ -26,7 +26,8 @@ class VerifyImg implements Rule
      */
     public function passes($attribute, $value)
     {
-        if (dujiaoka_config_get('is_open_img_code') == BaseModel::STATUS_OPEN && !captcha_check($value)) {
+        if (dujiaoka_config_get('is_open_img_code') == BaseModel::STATUS_OPEN
+            && (! is_string($value) || ! captcha_check($value))) {
             return false;
         }
         return true;
