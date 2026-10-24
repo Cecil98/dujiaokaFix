@@ -19,3 +19,15 @@ If you're using Codex or another agent-capable tool, additional project-scoped h
 Managed by Trellis. Edits outside this block are preserved; edits inside may be overwritten by a future `trellis update`.
 
 <!-- TRELLIS:END -->
+
+## Security audit for PHP
+
+Use the bundled `security-audit` skill for PHP security reviews:
+
+- Read `.agents/skills/security-audit/SKILL.md` before auditing.
+- Run the baseline from the repo root:
+  `./.agents/skills/security-audit/scripts/security-audit.sh .`
+- Local Laravel notes: `.agents/skills/security-audit/PROJECT-USAGE.md`
+  (`app/` is scanned; map upstream `Classes/**` checkpoints to `app/**`).
+- Record external scanner coverage gaps (semgrep/gitleaks/trivy/gh) instead of
+  treating a skipped scanner as a clean result.
