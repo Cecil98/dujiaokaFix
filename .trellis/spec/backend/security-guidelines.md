@@ -62,3 +62,14 @@ php tools/php-audit-skills/tools/sink_finder.php app
 
 Static sink results must be triaged in `docs/security-audit/`; do not report a
 clean result when an external scanner was skipped.
+
+## Audit automation
+
+- Use `.pi/workflows/php-audit-full.js` for pi-native audits; start with
+  `mode="recon"`, then `static`/`deep-static`.
+- Upstream knowledge/tools live in `tools/php-audit-skills/`; do not copy
+  findings into Git without verifying them.
+- The dynamic phase is opt-in only (`allowDynamic=true`) and requires an
+  isolated local/staging target with a database snapshot.
+- Keep raw artifacts and PoCs out of Git; commit only the sanitized report,
+  `findings.json` and `sarif.json` when appropriate.

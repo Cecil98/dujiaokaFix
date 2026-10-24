@@ -38,6 +38,7 @@ SubagentWorkflow({
 })
 ```
 
+Pass `args` as an object (a JSON string is also accepted for CLI-style callers).
 Use `mode: "recon"` first to validate tooling:
 
 ```text

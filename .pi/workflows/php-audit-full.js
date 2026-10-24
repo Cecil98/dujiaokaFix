@@ -18,12 +18,20 @@ export const meta = {
 //   mode: "static" | "deep-static" | "full", default "static"
 //   maxAuditItems: number, default 12 (static) / 24 (deep-static/full)
 //   allowDynamic: boolean, default false; requires an isolated local/staging target
-const target = String(args?.target ?? '.')
-const slug = target.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^_+/, '') || 'target'
-const outputDir = String(args?.output ?? ('docs/security-audit/' + slug))
-const mode = String(args?.mode ?? 'static')
-const maxAuditItems = Number(args?.maxAuditItems ?? (mode === 'static' ? 12 : 24))
-const allowDynamic = args?.allowDynamic === true
+// pi passes args as an object; tolerate a JSON string for CLI-style callers.
+let input = {}
+if (typeof args === 'string' && args.trim() !== '') {
+  try { input = JSON.parse(args) } catch { input = {} }
+} else if (args && typeof args === 'object') {
+  input = args
+}
+
+const target = String(input.target ?? '.')
+const slug = target === '.' ? 'repository' : (target.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^_+/, '') || 'target')
+const outputDir = String(input.output ?? ('docs/security-audit/' + slug))
+const mode = ['recon', 'static', 'deep-static', 'full'].includes(String(input.mode)) ? String(input.mode) : 'static'
+const maxAuditItems = Math.max(1, Math.min(100, Number(input.maxAuditItems ?? (mode === 'static' ? 12 : 24))))
+const allowDynamic = input.allowDynamic === true
 
 const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info']
 const DOMAINS = ['payment-authz', 'injection', 'xss-csrf-session', 'business-logic', 'config-supplychain']
