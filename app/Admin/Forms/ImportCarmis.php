@@ -19,16 +19,27 @@ class ImportCarmis extends Form
      */
     public function handle(array $input)
     {
-        if (empty($input['carmis_list']) && empty($input['carmis_txt'])) {
+        // dcat 的 file 字段在没有上传文件时可能是 null；PHP 8 的
+        // Flysystem::delete() 不接受 null，必须先做标量/空值判断。
+        $carmisList = is_scalar($input['carmis_list'] ?? null)
+            ? trim((string) $input['carmis_list'])
+            : '';
+        $carmisTxt = is_scalar($input['carmis_txt'] ?? null)
+            ? trim((string) $input['carmis_txt'])
+            : '';
+
+        if ($carmisList === '' && $carmisTxt === '') {
             return $this->response()->error(admin_trans('carmis.rule_messages.carmis_list_and_carmis_txt_can_not_be_empty'));
         }
-        $carmisContent = "";
-        if (!empty($input['carmis_txt'])) {
-            $carmisContent = Storage::disk('public')->get($input['carmis_txt']);
+
+        $carmisContent = '';
+        if ($carmisTxt !== '') {
+            $carmisContent = (string) Storage::disk('public')->get($carmisTxt);
         }
-        if (!empty($input['carmis_list'])) {
-            $carmisContent = $input['carmis_list'];
+        if ($carmisList !== '') {
+            $carmisContent = $carmisList;
         }
+
         $carmisData = [];
         $tempList = explode(PHP_EOL, $carmisContent);
         foreach ($tempList as $val) {
@@ -42,12 +53,22 @@ class ImportCarmis extends Form
                 ];
             }
         }
-        if ($input['remove_duplication'] == 1) {
+
+        if (empty($carmisData)) {
+            return $this->response()->error(admin_trans('carmis.rule_messages.carmis_list_and_carmis_txt_can_not_be_empty'));
+        }
+
+        if ((int) ($input['remove_duplication'] ?? 0) === 1) {
             $carmisData = assoc_unique($carmisData, 'carmi');
         }
+
         Carmis::query()->insert($carmisData);
-        // 删除文件
-        Storage::disk('public')->delete($input['carmis_txt']);
+
+        // 只有确实上传了文件才删除，不能把 null 传给 delete()。
+        if ($carmisTxt !== '') {
+            Storage::disk('public')->delete($carmisTxt);
+        }
+
         return $this
 				->response()
 				->success(admin_trans('carmis.rule_messages.import_carmis_success'))

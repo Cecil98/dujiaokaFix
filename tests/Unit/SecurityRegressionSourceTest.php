@@ -179,6 +179,20 @@ class SecurityRegressionSourceTest extends TestCase
         ]);
     }
 
+    public function testCarmisImportDoesNotDeleteNullUploadPath(): void
+    {
+        $this->assertSourceContains('app/Admin/Forms/ImportCarmis.php', [
+            "is_scalar(\$input['carmis_txt'] ?? null)",
+            "if (\$carmisTxt !== '') {",
+            'Storage::disk(\'public\')->delete($carmisTxt);',
+        ]);
+        $this->assertStringNotContainsString(
+            "Storage::disk('public')->delete(\$input['carmis_txt'])",
+            $this->source('app/Admin/Forms/ImportCarmis.php'),
+            'carmis_txt may be null; never pass it directly to Flysystem delete()'
+        );
+    }
+
     public function testGeetestValidationActuallyChecksFails(): void
     {
         $this->assertSourceContains('app/Service/OrderService.php', [
