@@ -5,10 +5,10 @@
 ## 手动安装lnmp
 - 更新源
 
-```bash  
-apt update  
+```bash
+apt update
 apt upgrade
-``` 
+```
 
 - 安装Nginx
 ```bash
@@ -34,33 +34,34 @@ Your MariaDB connection id is 74
 Server version: 10.3.15-MariaDB-1 Debian 10
 Copyright (c) 2000, 2018, Oracle, MariaDB Corporation Ab and others.
 Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
-MariaDB [(none)]> 
+MariaDB [(none)]>
 ```
-接下来输入命令 
+接下来输入命令
 ```sql
 CREATE DATABASE [这里替换为数据库名] ;
 GRANT ALL ON [这里替换为数据库名].* TO '[这里替换为用户名]'@'localhost' IDENTIFIED BY '[这里替换为密码]' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 EXIT
 ```
-- 安装PHP7.4
+- 安装PHP8.3
 ```bash
-apt install php php-fpm php-mysql php-gd php-zip php-opcache php-curl php-mbstring php-intl php-dom php-bcmath php-redis php-fileinfo
+apt install php8.3 php8.3-fpm php8.3-mysql php8.3-gd php8.3-zip php8.3-opcache php8.3-curl php8.3-mbstring php8.3-intl php8.3-dom php8.3-bcmath php8.3-redis php8.3-fileinfo
 ```
 - 安装redis
 ```bash
 apt install redis
 ```
 - 启用函数
-`nano /etc/php/7.4/fpm/php.ini`,`ctrl+w` 搜索 `putenv`，`proc_open`，`pcntl_signal`，`pcntl_alarm` 在`disable_functions` 一行 有就去掉。
-之后 `/etc/init.d/php7.4-fpm reload` 
+`nano /etc/php/8.3/fpm/php.ini`,`ctrl+w` 搜索 `putenv`，`proc_open`，`pcntl_signal`，`pcntl_alarm` 在`disable_functions` 一行 有就去掉。
+之后 `/etc/init.d/php8.3-fpm reload`
 
 ## 下载源代码
 ```bash
 cd /var/www/dujiaoka
 apt install git
-git clone https://github.com/assimon/dujiaoka.git 
-chmod 777 -R /var/www/dujiaoka
+git clone https://github.com/assimon/dujiaoka.git
+chown -R www-data:www-data /var/www/dujiaoka/storage /var/www/dujiaoka/bootstrap/cache /var/www/dujiaoka/public/uploads
+chmod -R 775 /var/www/dujiaoka/storage /var/www/dujiaoka/bootstrap/cache /var/www/dujiaoka/public/uploads
 ```
 ## 配置 nginx
 - 假设你的域名是：`domain.com`
@@ -69,7 +70,7 @@ chmod 777 -R /var/www/dujiaoka
 - 按下文教程配置时，注意修改演示配置中的域名和目录
 
 ```bash
-nano /etc/nginx/sites-enabled/dujiaoka 
+nano /etc/nginx/sites-enabled/dujiaoka
 ```
 你可以参考我的配置文件
 ```bash
@@ -98,14 +99,18 @@ server
 }
         #error_page   404   /404.html;
 
-        # Deny access to PHP files in specific directory
-        #location ~ /(wp-content|uploads|wp-includes|images)/.*\.php$ { deny all; }
+        # 禁止上传目录执行 PHP（必须保留）
+        location ^~ /uploads/ {
+            location ~ \.php$ { deny all; }
+            location ~ /\. { deny all; }
+            try_files $uri =404;
+        }
 
         location ~ [^/]\.php(/|$)
         {
-          
-            fastcgi_pass  unix:/var/run/php/php7.4-fpm.sock;
-           
+
+            fastcgi_pass  unix:/var/run/php/php8.3-fpm.sock;
+
             include snippets/fastcgi-php.conf;
         }
 
@@ -144,8 +149,7 @@ php -r "unlink('composer-setup.php');"
 mv composer.phar /usr/local/bin/composer
 adduser user
 su user
-composer install
-composer update
+composer install --no-dev --optimize-autoloader
 su
 ```
 ## 访问安装页面
@@ -159,7 +163,8 @@ su
 
 编辑 `/var/www/dujiaoka/.env`
 - 将 `APP_DEBUG=true` 改为 `APP_DEBUG=false`
-- 另起一行，添加 `ADMIN_HTTPS=true`
+- HTTPS 环境添加 `ADMIN_HTTPS=true` 和 `SESSION_SECURE_COOKIE=true`
+- 旧库升级后执行 `php artisan pay:encrypt-secrets`
 - 尝试登入后台。如果提示 `0 error` ，刷新页面即可
 
 ## 配置 Supervisor
