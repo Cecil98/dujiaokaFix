@@ -171,7 +171,7 @@ TRUSTED_PROXIES=172.30.0.0/24
 如果你修改了 overlay 里的 subnet，必须同步修改这个值（或改 `.env`）。然后：
 
 ```bash
-docker compose exec -T web php artisan optimize:clear
+docker compose exec -T web php artisan config:clear && php artisan view:clear
 ```
 
 不设置会有什么问题：

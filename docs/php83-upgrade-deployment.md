@@ -266,7 +266,7 @@ CACHE_DRIVER=redis
 
 ```bash
 # 0) 先清理旧配置缓存，避免新进程继续使用缓存里的旧 APP_KEY
-docker compose exec -T web php artisan optimize:clear
+docker compose exec -T web php artisan config:clear && php artisan view:clear
 
 # 1) 备份旧 APP_KEY（.env 已备份）
 grep '^APP_KEY=' .env
@@ -295,7 +295,7 @@ docker compose exec -T web php artisan pay:encrypt-secrets
 docker compose exec -T web php artisan pay:decrypt-secrets
 
 # 清理配置缓存，再执行 5.1 的 key:generate + pay:encrypt-secrets
-docker compose exec -T web php artisan optimize:clear
+docker compose exec -T web php artisan config:clear && php artisan view:clear
 ```
 
 ### 5.3 重要警告
@@ -315,7 +315,7 @@ docker compose exec -T web php artisan optimize:clear
 ## 6. Artisan 初始化
 
 ```bash
-docker compose exec -T web php artisan optimize:clear
+docker compose exec -T web php artisan config:clear && php artisan view:clear
 docker compose exec -T web php artisan admin:update
 # 预期最后一行：Nothing to migrate
 
@@ -468,7 +468,7 @@ systemctl restart php8.3-fpm
 | 5 | 部署 `v2.1.0-php83` 代码/镜像 | 容器启动，日志无 fatal |
 | 6 | 修改 `.env`（`APP_DEBUG=false`、`SESSION_SECURE_COOKIE=true` 等） | `config:clear` 后配置生效 |
 | 7 | 轮换 APP_KEY → `pay:encrypt-secrets` | 第二次命令 `rows updated: 0` |
-| 8 | `admin:update`、`optimize:clear`、`queue:restart` | `Nothing to migrate` |
+| 8 | `admin:update`、`config:clear`、`view:clear`、`queue:restart` | `Nothing to migrate` |
 | 9 | 后台登录、商品/订单/卡密页面 | 200，默认密码被强制修改 |
 | 10 | 上传目录/`.env` HTTP 检查 | 403 |
 | 11 | 易支付下单→回调→订单完成；重复回调/金额错误 | 不重复发货、金额错误 fail |
@@ -487,7 +487,9 @@ systemctl restart php8.3-fpm
 5. **`pays.is_open`**：升级脚本会关闭其他渠道和未配置/占位符的易支付行，但不会覆盖已配置易支付行的手动开关（PQ-01：出厂占位符 `商户号` / `密钥` 不可用）；如确需其他渠道，升级后手动开启。
 6. **`box/spout`**：`dcat/easy-excel` 依赖的导出库已 abandoned，但没有已知安全公告；后续可评估替代。
 7. **静态审计**：完整动态利用审计可运行 `.pi/workflows/php-audit-full.js`（需隔离环境）；本仓库已做 PHP_AUDIT_SKILLS 静态审计 + 定向复核，报告见 `docs/security-audit/dujiaoka-php83/审计报告.md`，整改记录见同目录 `整改说明.md`。
-8. **镜像**：代码分支 `upgrade/php83` 和 tag `v2.1.0-php83` 已推送到 GitHub；Docker 镜像仍需你按实际镜像仓库构建/推送，或使用自己的 CI。
+8. **系统设置不要在 cache 里裸奔**：新版本将系统设置写入 `admin_settings`（`slug=system-setting`），cache 只做加速；执行 `cache:clear` / `optimize:clear` 后会自动从数据库恢复。旧版本只存在 cache，升级后请先打开后台保存一次系统设置，再执行任何清理；如果 cache 里还有旧配置，可执行 `php artisan system-setting:persist` 落库。
+9. **不要执行 `optimize:clear` 清理配置**：它包含 `cache:clear`，会清掉旧版仅存于 cache 的 Telegram / Bark / SMTP / 极验等设置。需要清配置缓存时只执行 `config:clear` 和 `view:clear`。
+10. **镜像**：代码分支 `upgrade/php83` 和 tag `v2.1.0-php83` 已推送到 GitHub；Docker 镜像仍需你按实际镜像仓库构建/推送，或使用自己的 CI。
 
 ---
 
@@ -512,7 +514,7 @@ docker compose up -d
 docker compose exec -T web php artisan key:generate --force
 docker compose exec -T web php artisan pay:encrypt-secrets
 docker compose exec -T web php artisan admin:update
-docker compose exec -T web php artisan optimize:clear
+docker compose exec -T web php artisan config:clear && php artisan view:clear
 docker compose exec -T web php artisan queue:restart
 
 # 验证

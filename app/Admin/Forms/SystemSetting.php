@@ -3,8 +3,8 @@
 namespace App\Admin\Forms;
 
 use App\Models\BaseModel;
+use App\Service\SystemSettingService;
 use Dcat\Admin\Widgets\Form;
-use Illuminate\Support\Facades\Cache;
 
 class SystemSetting extends Form
 {
@@ -17,7 +17,7 @@ class SystemSetting extends Form
      */
     public function handle(array $input)
     {
-        Cache::put('system-setting', $input);
+        SystemSettingService::put($input);
         return $this
 				->response()
 				->success(admin_trans('system-setting.rule_messages.save_system_setting_success'));
@@ -96,7 +96,7 @@ class SystemSetting extends Form
 
     public function default()
     {
-        return Cache::get('system-setting');
+        return SystemSettingService::get();
     }
 
 }

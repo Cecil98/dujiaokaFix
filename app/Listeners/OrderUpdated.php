@@ -3,6 +3,7 @@
 namespace App\Listeners;
 
 use App\Jobs\MailSend;
+use App\Service\SystemSettingService;
 use App\Models\Emailtpl;
 use App\Models\Order;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -29,7 +30,7 @@ class OrderUpdated
      */
     public function handle(OrderUpdatedEvent $event)
     {
-        $sysCache = cache('system-setting');
+        $sysCache = SystemSettingService::get();
         // 当代充商品状态，将会对顾客进行订单内容推送
         $order = [
             'created_at' => date('Y-m-d H:i'),

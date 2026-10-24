@@ -11,8 +11,8 @@ namespace App\Admin\Forms;
 
 use App\Models\BaseModel;
 use Dcat\Admin\Widgets\Form;
-use Illuminate\Support\Facades\Cache;
 use App\Service\MailConfigService;
+use App\Service\SystemSettingService;
 use Illuminate\Support\Facades\Mail;
 
 class EmailTest extends Form
@@ -29,7 +29,7 @@ class EmailTest extends Form
       $to = $input['to'];
       $title = $input['title'];
       $body = $input['body'];
-      $sysConfig = cache('system-setting') ?: [];
+      $sysConfig = SystemSettingService::get();
       MailConfigService::apply($sysConfig);
 	  try
 	  {

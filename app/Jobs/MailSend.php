@@ -6,6 +6,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use App\Service\MailConfigService;
+use App\Service\SystemSettingService;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Mail;
@@ -66,7 +67,7 @@ class MailSend implements ShouldQueue
 
         $body = $this->content;
         $title = $this->title;
-        $sysConfig = cache('system-setting') ?: [];
+        $sysConfig = SystemSettingService::get();
         MailConfigService::apply($sysConfig);
         Mail::send('email.mail', ['body' => $body], function ($message) use ($to, $title){
             $message->to($to)->subject($title);
