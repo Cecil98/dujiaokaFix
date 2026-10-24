@@ -31,3 +31,16 @@ Use the bundled `security-audit` skill for PHP security reviews:
   (`app/` is scanned; map upstream `Classes/**` checkpoints to `app/**`).
 - Record external scanner coverage gaps (semgrep/gitleaks/trivy/gh) instead of
   treating a skipped scanner as a clean result.
+
+## PHP security audit on pi
+
+- Design: `docs/php-audit-pi/design.md`
+- Quick start: `docs/php-audit-pi/README.md`
+- Workflow: `.pi/workflows/php-audit-full.js`
+- Agents: `.pi/agents/php-audit-{recon,auditor,verifier,reporter,dynamic}.md`
+- Knowledge base/tools: `tools/php-audit-skills/`
+- Outputs: `docs/security-audit/<target>/`
+
+Use `mode="recon"` for a cheap tooling smoke test, `static` for release
+gates, `deep-static` for payment/auth changes. The dynamic phase is off by
+default and requires `allowDynamic=true` plus an isolated local/staging target.

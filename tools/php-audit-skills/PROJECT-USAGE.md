@@ -27,3 +27,8 @@ can be reused without a second Composer install.
 - `tools/sink_finder.php` now resolves `../../../vendor/autoload.php`.
 - This run: 50 sinks, all triaged in
   `docs/security-audit/php83-upgrade/审计报告.md`.
+
+## pi adapter
+
+For the pi-native workflow/agents, see `docs/php-audit-pi/design.md` and
+`docs/php-audit-pi/README.md`. Entry point: `.pi/workflows/php-audit-full.js`.

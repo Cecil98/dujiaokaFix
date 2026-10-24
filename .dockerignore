@@ -15,6 +15,7 @@ public/uploads/*
 tests
 phpunit.xml
 .trellis
+tools
 .agents
 .claude
 .codex
