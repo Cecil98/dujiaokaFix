@@ -15,6 +15,8 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

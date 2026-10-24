@@ -41,10 +41,10 @@ class YipayController extends PayController
             $sign = md5($sign . $this->payGateway->merchant_pem);//密码追加进入开始MD5签名
             $parameter['sign'] = $sign;
             //待请求参数数组
-            $sHtml = "<form id='alipaysubmit' name='alipaysubmit' action='" . $this->payGateway->merchant_key . "' method='get'>";
+            $sHtml = "<form id='alipaysubmit' name='alipaysubmit' action='" . e((string) $this->payGateway->merchant_key) . "' method='get'>";
 
             foreach($parameter as $key => $val) {
-                $sHtml.= "<input type='hidden' name='".$key."' value='".$val."'/>";
+                $sHtml.= "<input type='hidden' name='".e((string) $key)."' value='".e((string) $val)."'/>";
             }
 
             //submit按钮控件请不要含有name属性

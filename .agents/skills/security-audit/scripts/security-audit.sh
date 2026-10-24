@@ -124,7 +124,7 @@ fi
 echo ""
 echo "=== Checking for Command Injection ==="
 if [[ ${#SCAN_DIRS[@]} -gt 0 ]]; then
-    CMD_INJECTION=$(scan_php "(exec|system|passthru|shell_exec|proc_open|popen)\s*\(.*\\\$")
+    CMD_INJECTION=$(scan_php "\b(exec|system|passthru|shell_exec|proc_open|popen)\s*\(.*\\\$")
     if [[ -n "$CMD_INJECTION" ]]; then
         echo "🔴 Potential command injection found:"
         echo "$CMD_INJECTION"
@@ -138,7 +138,7 @@ fi
 echo ""
 echo "=== Checking for Dangerous Functions ==="
 if [[ ${#SCAN_DIRS[@]} -gt 0 ]]; then
-    DANGEROUS=$(scan_php "(eval|assert|create_function|preg_replace.*\/e|unserialize\s*\(\s*\\\$)")
+    DANGEROUS=$(scan_php "\beval\s*\(|\bassert\s*\(|\bcreate_function\s*\(|preg_replace.*\/e|unserialize\s*\(\s*\\\$")
     if [[ -n "$DANGEROUS" ]]; then
         echo "⚠️  Potentially dangerous functions found:"
         echo "$DANGEROUS"

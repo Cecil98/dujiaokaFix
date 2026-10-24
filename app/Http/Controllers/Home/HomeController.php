@@ -132,6 +132,31 @@ class HomeController extends BaseController
     public function doInstall(Request $request)
     {
         try {
+            $adminUsername = trim((string) $request->input('admin_username', 'admin'));
+            $adminPassword = (string) $request->input('admin_password');
+
+            foreach ([
+                'db_host', 'db_port', 'db_database', 'db_username', 'db_password',
+                'redis_host', 'redis_password', 'redis_port', 'title', 'app_url', 'admin_path',
+            ] as $field) {
+                if (preg_match('/[\r\n]/', (string) $request->input($field))) {
+                    return '输入内容包含非法字符';
+                }
+            }
+
+            if (! preg_match('/^[A-Za-z0-9_]{3,32}$/', $adminUsername)) {
+                return '后台管理员账号只能包含字母、数字、下划线，长度 3-32 位';
+            }
+            if (strlen($adminPassword) < 10) {
+                return '后台管理员密码至少 10 位';
+            }
+            if (! filter_var((string) $request->input('app_url'), FILTER_VALIDATE_URL)) {
+                return '网站 URL 格式不正确';
+            }
+            if (! preg_match('#^/[A-Za-z0-9_-]+$#', (string) $request->input('admin_path', '/admin'))) {
+                return '后台登录路径格式不正确（例如 /admin）';
+            }
+
             $dbConfig = config('database');
             $mysqlDB = [
                 'host' => $request->input('db_host'),
@@ -167,21 +192,38 @@ class HomeController extends BaseController
                     Encrypter::generateKey(config('app.cipher'))
                 );
             foreach ($postData as $key => $item) {
+                if (is_string($item)) {
+                    // Values are written inside double quotes in .env.example.
+                    $item = str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], $item);
+                }
                 $envTemp = str_replace('{' . $key . '}', $item, $envTemp);
             }
             // 写入配置
             file_put_contents($envPath, $envTemp);
             // 导入sql
             DB::unprepared(file_get_contents($installSql));
+            // 初始化后台管理员账号，避免使用默认的 admin/admin
+            $updated = DB::table('admin_users')->where('id', 1)->update([
+                'username'   => $adminUsername,
+                'password'   => bcrypt($adminPassword),
+                'name'       => 'Administrator',
+                'updated_at' => now(),
+            ]);
+            if ($updated !== 1) {
+                throw new \RuntimeException('后台管理员账号初始化失败');
+            }
             // 写入安装锁
             file_put_contents($installLock, 'install ok');
             return 'success';
         } catch (\RedisException $exception) {
-            return 'Redis配置错误 :' . $exception->getMessage();
+            \Illuminate\Support\Facades\Log::error('Install Redis error: '.$exception->getMessage());
+            return 'Redis 配置错误，请检查连接参数后重试';
         } catch (QueryException $exception) {
-            return '数据库配置错误 :' . $exception->getMessage();
+            \Illuminate\Support\Facades\Log::error('Install database error: '.$exception->getMessage());
+            return '数据库配置错误，请检查连接参数后重试';
         } catch (\Exception $exception) {
-            return $exception->getMessage();
+            \Illuminate\Support\Facades\Log::error('Install error: '.$exception->getMessage());
+            return '安装失败，请检查服务器日志后重试';
         }
     }
 

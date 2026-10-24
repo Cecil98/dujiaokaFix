@@ -111,8 +111,8 @@ class GeetestLib
 	 */
 	private function failbackProcess()
 	{
-		$rnd1 = md5(rand(0, 100));
-		$rnd2 = md5(rand(0, 100));
+		$rnd1 = bin2hex(random_bytes(16));
+		$rnd2 = bin2hex(random_bytes(16));
 		$challenge = $rnd1 . substr($rnd2, 0, 2);
 		$result = [
 			'success' => 0,

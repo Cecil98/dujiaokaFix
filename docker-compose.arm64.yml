@@ -13,7 +13,8 @@ services:
       - ${DATA_DIR:-./data}/dujiaoka/storage:/app/storage
       - ${DATA_DIR:-./data}/dujiaoka/public/uploads:/app/public/uploads
     environment:
-      INSTALL: "${INSTALL:-true}"
+      # First install: set INSTALL=true; after installation set INSTALL=false.
+      INSTALL: "${INSTALL:-false}"
       TZ: Asia/Shanghai
     tty: true
     restart: always

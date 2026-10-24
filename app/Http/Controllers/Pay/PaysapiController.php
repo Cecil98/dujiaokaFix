@@ -60,15 +60,15 @@ class PaysapiController extends PayController
                 </head>
                 <body style=\"\">
                 <form id=\"alipaysubmit\" name=\"alipaysubmit\" action=\"".self::PAY_URI."\" method=\"post\">
-                <input type=\"hidden\" name=\"goodsname\" value=\"".$goodsname."\">
-                <input type=\"hidden\" name=\"istype\" value=\"".$istype."\">
-                <input type=\"hidden\" name=\"key\" value=\"".$key."\">
-                <input type=\"hidden\" name=\"notify_url\" value=\"".$notify_url."\">
-                <input type=\"hidden\" name=\"orderid\" value=\"".$orderid."\">
-                <input type=\"hidden\" name=\"orderuid\" value=\"".$orderuid."\">
-                <input type=\"hidden\" name=\"price\" value=\"".$price."\">
-                <input type=\"hidden\" name=\"return_url\" value=\"".$return_url."\">
-                <input type=\"hidden\" name=\"uid\" value=\"".$uid."\">
+                <input type=\"hidden\" name=\"goodsname\" value=\"".e((string) $goodsname)."\">
+                <input type=\"hidden\" name=\"istype\" value=\"".e((string) $istype)."\">
+                <input type=\"hidden\" name=\"key\" value=\"".e((string) $key)."\">
+                <input type=\"hidden\" name=\"notify_url\" value=\"".e((string) $notify_url)."\">
+                <input type=\"hidden\" name=\"orderid\" value=\"".e((string) $orderid)."\">
+                <input type=\"hidden\" name=\"orderuid\" value=\"".e((string) $orderuid)."\">
+                <input type=\"hidden\" name=\"price\" value=\"".e((string) $price)."\">
+                <input type=\"hidden\" name=\"return_url\" value=\"".e((string) $return_url)."\">
+                <input type=\"hidden\" name=\"uid\" value=\"".e((string) $uid)."\">
                 <input type=\"submit\" value=\"正在跳转\">
                 </form><script>document.forms['alipaysubmit'].submit();</script></body></html>
                 ";

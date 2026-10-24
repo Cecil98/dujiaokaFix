@@ -21,3 +21,17 @@ Local adjustments for this Laravel project:
   installed in every environment; the grep-based checks still run. Do not
   report a clean result when an external scanner was skipped — record it as a
   coverage gap.
+
+## Baseline (2026-10-24)
+
+- `security-audit.sh` reports **0 errors / 2 warnings** on the PHP tree after
+  fixing weak `rand()` token/pay-id generation and escaping the Yipay/Paysapi
+  form output.
+- Remaining warnings are coverage notes, not vulnerabilities:
+  - `declare(strict_types=1)` is not used across the legacy app (104 files).
+  - Composer is not installed on the host; run
+    `composer audit --locked --no-plugins --no-scripts` inside the PHP container.
+- Local false-positive filters added to the vendored scanner: `app/` scanning,
+  a word boundary for command-execution functions (so `curl_exec` no longer
+  matches), and an anchored `eval(`/`assert(` check (so `$codevalidate` no
+  longer matches).

@@ -166,7 +166,7 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE', false),
+    'secure' => env('SESSION_SECURE_COOKIE', null),
 
     /*
     |--------------------------------------------------------------------------
@@ -179,7 +179,7 @@ return [
     |
     */
 
-    'http_only' => true,
+    'http_only' => env('SESSION_HTTP_ONLY', true),
 
     /*
     |--------------------------------------------------------------------------
@@ -194,6 +194,6 @@ return [
     |
     */
 
-    'same_site' => null,
+    'same_site' => env('SESSION_SAME_SITE', 'lax'),
 
 ];

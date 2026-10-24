@@ -14,6 +14,8 @@ services:
       # 增加此行，确保将上传的资源映射出来，避免容器重新创建后图片不在了
       - ${DATA_DIR}/dujiaoka/public/uploads:/app/public/uploads
     environment:
+      # First install: set INSTALL=true; after installation set INSTALL=false.
+      INSTALL: "${INSTALL:-false}"
       WEB_DOCUMENT_ROOT: "/app/public"
       TZ: Asia/Shanghai
     tty: true

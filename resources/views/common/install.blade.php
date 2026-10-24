@@ -759,6 +759,16 @@ TkSuQmCC" />
                     <input  name="admin_path" value="/admin" required="" placeholder="例如：/admin">
                 </div>
 
+                <div class="form-field">
+                    <label>后台管理员账号</label>
+                    <input name="admin_username" value="admin" required="" pattern="[A-Za-z0-9_]{3,32}" placeholder="字母、数字、下划线，3-32 位">
+                </div>
+
+                <div class="form-field">
+                    <label>后台管理员密码（至少 10 位）</label>
+                    <input type="password" name="admin_password" required="" minlength="10" autocomplete="new-password">
+                </div>
+
             </div>
 
             <div class="form-buttons">
@@ -782,7 +792,7 @@ TkSuQmCC" />
                         .done(function (ret) {
                             if (ret === 'success') {
                                 $('#error').hide();
-                                $("#success").text("安装成功！您的后台登录账号密码均为：admin，请及时登录修改！").show();
+                                $("#success").text("安装成功！请使用您刚刚设置的后台管理员账号和密码登录。").show();
                                 $('<a class="btn" href="/">访问首页</a> <a class="btn" href=\"'+ adminurl +'\" style="background:#18bc9c">访问后台</a>').insertAfter($button);
                                 $button.remove();
                             } else {

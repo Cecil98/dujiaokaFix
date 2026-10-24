@@ -243,7 +243,7 @@ CREATE TABLE `admin_users` (
 -- Records of admin_users
 -- ----------------------------
 BEGIN;
-INSERT INTO `admin_users` VALUES (1, 'admin', '$2y$10$e7z99Mhxm9BOHL55xHZTx.QcNTZJC6ftRXHCR/ZkBja/jBeasVeBy', 'Administrator', NULL, '4UAXF2BEw9EL1Tr2aGmwkv5DKwxqRF6djOMAHSiBMSOrPfPNHYrjCCQMtnTC', '2021-05-16 02:06:08', '2021-05-16 02:06:08');
+INSERT INTO `admin_users` VALUES (1, 'admin', '$2y$10$Zp3uY/ioc73MLks9r6CKPea3UZyAK0JXUFnCV94sX97kpGwwVrDV6', 'Administrator', NULL, '4UAXF2BEw9EL1Tr2aGmwkv5DKwxqRF6djOMAHSiBMSOrPfPNHYrjCCQMtnTC', '2021-05-16 02:06:08', '2021-05-16 02:06:08');
 COMMIT;
 
 -- ----------------------------

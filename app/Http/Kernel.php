@@ -39,6 +39,7 @@ class Kernel extends HttpKernel
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            \App\Http\Middleware\SecurityHeaders::class,
         ],
 
         'api' => [
@@ -68,6 +69,7 @@ class Kernel extends HttpKernel
         'dujiaoka.boot' => DujiaoBoot::class,
         'dujiaoka.pay_gate_way' => PayGateWay::class,
         'install.check' => InstallCheck::class,
+        'admin.force-password' => \App\Http\Middleware\ForceAdminPasswordChange::class,
     ];
 
     /**

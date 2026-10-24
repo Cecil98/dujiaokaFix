@@ -71,7 +71,7 @@ return [
 
         'namespace' => 'App\\Admin\\Controllers',
 
-        'middleware' => ['web', 'admin'],
+        'middleware' => ['web', 'admin', 'admin.force-password'],
 
         'enable_session_middleware' => false,
     ],
