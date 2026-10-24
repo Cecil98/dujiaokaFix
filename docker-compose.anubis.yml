@@ -1,0 +1,64 @@
+# Opt-in Anubis overlay.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.anubis.yml up -d
+#   docker compose -f docker-compose.arm64.yml -f docker-compose.anubis.yml up -d   # ARM64
+#
+# Anubis becomes the only published HTTP entrypoint. The web service is still
+# reachable by Anubis over the Docker network, but is no longer published on
+# the host (including the old 9000 PHP-FPM port).
+services:
+  web:
+    # !reset is required: Compose otherwise merges/keeps the base ports.
+    ports: !reset []
+    expose:
+      - "80"
+    networks:
+      - dujiao-anubis
+    environment:
+      # Anubis is the only published entrypoint; trust its fixed subnet so
+      # Laravel sees the real client IP from X-Forwarded-For.
+      TRUSTED_PROXIES: "172.30.0.0/24"
+
+  anubis:
+    image: ghcr.io/techarohq/anubis:v1.28.2
+    container_name: dujiaoka-anubis
+    depends_on:
+      - web
+    environment:
+      BIND: ":8080"
+      TARGET: "http://web:80"
+      POLICY_FNAME: "/data/cfg/botPolicy.yaml"
+      DIFFICULTY: "${ANUBIS_DIFFICULTY:-4}"
+      SERVE_ROBOTS_TXT: "true"
+      # Directly exposed by this overlay; set to "false" when a host reverse
+      # proxy is in front and forwards X-Real-IP / X-Forwarded-For.
+      USE_REMOTE_ADDRESS: "${ANUBIS_USE_REMOTE_ADDRESS:-true}"
+      # HTTPS only by default. For plain-HTTP testing set these two to false/Lax.
+      COOKIE_SECURE: "${ANUBIS_COOKIE_SECURE:-true}"
+      COOKIE_SAME_SITE: "${ANUBIS_COOKIE_SAME_SITE:-Lax}"
+      # Set to your root domain when serving subdomains, e.g. example.com.
+      # Leave unset for a host-only cookie.
+      COOKIE_DOMAIN: "${ANUBIS_COOKIE_DOMAIN:-}"
+    volumes:
+      - ./conf/anubis/botPolicy.yaml:/data/cfg/botPolicy.yaml:ro
+    ports:
+      - "${ANUBIS_PORT:-80}:8080"
+    restart: always
+    healthcheck:
+      test: ["CMD", "anubis", "--healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 2s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dujiao-anubis
+
+networks:
+  # Fixed subnet so Laravel can trust only the Anubis hop:
+  #   TRUSTED_PROXIES=172.30.0.0/24
+  dujiao-anubis:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

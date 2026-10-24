@@ -1,0 +1,38 @@
+# Anubis policy for dujiaoka.
+#
+# Goal: challenge every request except payment initiation/return/callback
+# endpoints. Those endpoints are called by payment providers and by browser
+# redirects that may not have an Anubis cookie; challenging them would break
+# asynchronous notifications and payment returns.
+#
+# Keep the ALLOW rules first: Anubis applies rules in order and ALLOW bypasses
+# all further checks.
+bots:
+  # Yipay (epay) and any legacy provider under /pay/*, plus the payment
+  # redirect helper. Do not narrow this to notify_url only: return_url and
+  # gateway pages also need to work without a challenge cookie.
+  - name: allow-payment
+    path_regex: '^/(pay|pay-gateway)(/|$)'
+    action: ALLOW
+
+  # Anubis serves its own challenge assets from this prefix. Challenging them
+  # would prevent the challenge page from loading.
+  - name: allow-anubis-assets
+    path_regex: '^/\.within\.website(/|$)'
+    action: ALLOW
+
+  # Keep standard discovery/health files reachable.
+  - name: allow-well-known
+    path_regex: '^/(\.well-known/|favicon\.ico$|robots\.txt$)'
+    action: ALLOW
+
+  # Strict mode: every other path, including non-Mozilla clients, must solve
+  # the proof-of-work challenge. Change this to the upstream default policy
+  # (or add ALLOW rules for internal health checks) if non-browser clients
+  # need access.
+  - name: challenge-all
+    path_regex: '^/.*$'
+    action: CHALLENGE
+    challenge:
+      difficulty: 4
+      algorithm: fast
