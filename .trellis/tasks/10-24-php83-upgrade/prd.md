@@ -23,7 +23,7 @@
 - R2 后台使用自持 dcat fork `dcat/laravel-admin:2.2.5`（VCS repository），namespace 仍为 `Dcat\Admin\`。
 - R3 删除 `yansongda/pay`、`AlipayController`、`WepayController`、`PaypalPayController`、`paypal/rest-api-sdk-php` 及其路由。
 - R4 删除 `simplesoftwareio/simple-qrcode`、`fideloper/proxy`、`germey/geetest`、`amrshawky/laravel-currency`（用 `amrshawky/currency` 替代）。
-- R5 保留其他自写渠道代码，但 `pays.is_open=0` 默认禁用；只启用 `pay_handleroute='/pay/yipay'` 的三条易支付。
+- R5 保留其他自写渠道代码，默认所有 `pays.is_open=0`；易支付配置好真实凭据后再手动启用，升级脚本不自动覆盖运营者的开关。
 - R6 易支付链路保持现有行为：下单 → 跳转 → 异步回调验签 → 金额校验 → 幂等发货。
 - R7 数据库只做增量、幂等变更：新增 `admin_extensions`、`admin_extension_histories`、`failed_jobs.uuid`、4 条 dcat migrations 记录；修正 `pays` 数据。
 - R8 旧库升级后，旧订单/商品/卡密/优惠码/后台账号均可正常读写；回滚旧镜像无需删表删列。
@@ -37,8 +37,8 @@
 
 - [ ] AC1 全新安装（`install.sql`）和旧库升级（`upgrade-php83.sql`）两种路径都能完成，后台可登录。
 - [ ] AC2 `php artisan route:list` 通过，`admin/*`、`dcat-admin-api/*` 路由存在；不存在 `pay/alipay`、`pay/wepay`、`pay/paypal` 路由。
-- [ ] AC3 易支付-支付宝 / 易支付-微信 / 易支付-QQ：下单 → 回调 → 订单完成；重复回调不重复发货；金额不一致被拒绝。
-- [ ] AC4 其他渠道在前台不显示（`pays.is_open=0`），代码文件仍保留。
+- [ ] AC3 配置真实凭据并启用易支付后：易支付-支付宝 / 微信 / QQ 下单 → 回调 → 订单完成；重复回调不重复发货；金额不一致被拒绝；占位凭据被拒绝。
+- [ ] AC4 默认所有渠道 `is_open=0`，前台不显示支付方式；配置并启用易支付后仅易支付显示，其他渠道代码文件仍保留。
 - [ ] AC5 旧库升级后 `php artisan admin:update` 输出 `Nothing to migrate`；`failed_jobs` 有 `uuid` 列；旧业务数据可正常查询。
 - [ ] AC6 `composer audit` 无 high/critical；`composer install` 不再需要 `--ignore-platform-reqs`。
 - [ ] AC7 后台 商品/订单/卡密/优惠码/支付配置/邮件模板 CRUD 正常；卡密导出 xlsx 正常。

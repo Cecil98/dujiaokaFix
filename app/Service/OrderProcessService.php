@@ -356,8 +356,11 @@ class OrderProcessService
             if ($this->coupon) {
                 // 设置优惠码已经使用
                 $this->couponService->used($this->coupon->coupon);
-                // 使用次数-1
-                $this->couponService->retDecr($this->coupon->coupon);
+                // 使用次数-1（原子条件扣减，并发抢完则回滚本单，见 PQ-06-A）
+                $affected = $this->couponService->retDecr($this->coupon->coupon);
+                if ($affected < 1) {
+                    throw new RuleValidationException(__('dujiaoka.prompt.coupon_lack_of_available_opportunities'));
+                }
             }
             // 将订单加入队列 x分钟后过期
             $expiredOrderDate = dujiaoka_config_get('order_expire_time', 5);
@@ -391,8 +394,8 @@ class OrderProcessService
 
         DB::beginTransaction();
         try {
-            // 得到订单详情
-            $order = $this->orderService->detailOrderSN($orderSN);
+            // 得到订单详情（加行锁，避免与过期任务/重复回调交错，见 PQ-02）
+            $order = $this->orderService->detailOrderSN($orderSN, true);
             if (!$order) {
                 throw new \Exception(__('dujiaoka.prompt.order_does_not_exist'));
             }
@@ -429,8 +432,10 @@ class OrderProcessService
             } else {
                 $completedOrder = $this->processManual($order);
             }
-            // 销量加上
-            $this->goodsService->salesVolumeIncr($order->goods_id, $order->buy_amount);
+            // 销量只在真正完成/进入人工处理时增加；异常单（库存/卡密不足）不算销量
+            if ($completedOrder->status !== Order::STATUS_ABNORMAL) {
+                $this->goodsService->salesVolumeIncr($order->goods_id, $order->buy_amount);
+            }
             DB::commit();
             // 如果开启了server酱
             if (dujiaoka_config_get('is_open_server_jiang', 0) == BaseModel::STATUS_OPEN) {
@@ -469,12 +474,18 @@ class OrderProcessService
      */
     public function processManual(Order $order)
     {
+        // 商品库存减去（原子条件扣减）。已付款但库存不足时不能把订单留在待支付，
+        // 否则过期任务会把已付款订单改过期；标记为异常单交给后台处理（PQ-06-C）。
+        if ($this->goodsService->inStockDecr($order->goods_id, $order->buy_amount) < 1) {
+            $order->info = __('dujiaoka.prompt.inventory_shortage');
+            $order->status = Order::STATUS_ABNORMAL;
+            $order->save();
+            return $order;
+        }
         // 设置订单为待处理
         $order->status = Order::STATUS_PENDING;
         // 保存订单
         $order->save();
-        // 商品库存减去
-        $this->goodsService->inStockDecr($order->goods_id, $order->buy_amount);
         // 邮件数据
         $mailData = [
             'created_at' => $order->create_at,
@@ -492,7 +503,7 @@ class OrderProcessService
         $mailBody = replace_mail_tpl($tpl, $mailData);
         $manageMail = dujiaoka_config_get('manage_email', '');
         // 邮件发送
-        MailSend::dispatch($manageMail, $mailBody['tpl_name'], $mailBody['tpl_content']);
+        MailSend::dispatch($manageMail, $mailBody['tpl_name'], $mailBody['tpl_content'])->afterCommit();
         return $order;
     }
 
@@ -522,8 +533,11 @@ class OrderProcessService
         $order->info = implode(PHP_EOL, $carmisInfo);
         $order->status = Order::STATUS_COMPLETED;
         $order->save();
-        // 将卡密设置为已售出
-        $this->carmisService->soldByIDS($ids);
+        // 将卡密设置为已售出（CAS：必须影响行数等于期望数量，否则回滚事务，见 PQ-06-B）
+        $sold = $this->carmisService->soldByIDS($ids);
+        if ($sold !== count($ids)) {
+            throw new \RuntimeException(__('dujiaoka.prompt.order_carmis_insufficient_quantity_available'));
+        }
         // 邮件数据
         $mailData = [
             'created_at' => $order->create_at,
@@ -539,7 +553,7 @@ class OrderProcessService
         $tpl = $this->emailtplService->detailByToken('card_send_user_email');
         $mailBody = replace_mail_tpl($tpl, $mailData);
         // 邮件发送
-        MailSend::dispatch($order->email, $mailBody['tpl_name'], $mailBody['tpl_content']);
+        MailSend::dispatch($order->email, $mailBody['tpl_name'], $mailBody['tpl_content'])->afterCommit();
         return $order;
     }
 

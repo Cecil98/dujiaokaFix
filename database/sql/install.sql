@@ -535,9 +535,12 @@ INSERT INTO `pays` VALUES (33,'USDT-Polygon', 'tokenpay-usdt-polygon', 1, 3, 'EV
 INSERT INTO `pays` VALUES (34,'USDC-Polygon', 'tokenpay-usdc-polygon', 1, 3, 'EVM_Polygon_USDC_ERC20', '你的API密钥', 'https://token-pay.xxx.com', 'pay/tokenpay', 1, now(), now(), NULL);
 
 -- ----------------------------
--- Only enable epay (yipay) by default
+-- Payment channels are shipped disabled.
+-- The rows above keep factory placeholder credentials ('商户号' / '密钥'), which
+-- must never be usable (see security audit PQ-01). Configure a channel in the
+-- admin panel first, then enable it, e.g. for epay (yipay):
+--   UPDATE `pays` SET `is_open` = 1 WHERE `pay_handleroute` = '/pay/yipay';
 UPDATE `pays` SET `is_open` = 0;
-UPDATE `pays` SET `is_open` = 1 WHERE `pay_handleroute` = '/pay/yipay';
 
 COMMIT;
 

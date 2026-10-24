@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Pay;
 
 use App\Exceptions\RuleValidationException;
 use App\Http\Controllers\PayController;
+use App\Models\Order;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Redis;
 use URL;
@@ -27,11 +30,14 @@ class StripeController extends PayController
                     \Stripe\Stripe::setApiKey($this->payGateway->merchant_id);
                     $amount = bcmul($this->order->actual_price, 100, 2);
                     $price = $this->order->actual_price;
-                    $usd = bcmul($this->getUsdCurrency($this->order->actual_price), 100, 0);
+                    $usd = $this->expectedUsdAmountForOrder($this->order);
                     $orderid = $this->order->order_sn;
                     $pk = $this->payGateway->merchant_id;
                     $context = $this->buildOrderContextToken($this->order, ['stripe_usd_amount' => $usd]);
                     $return_url = site_url() . $this->payGateway->pay_handleroute . '/return_url/?orderid=' . $this->order->order_sn . '&context=' . $context;
+                    $csrfToken = csrf_token();
+                    $chargeUrl = url('/pay/stripe/charge');
+                    $checkUrl = url('/pay/stripe/check');
                     $html = "<html class=\"js cssanimations\">
 <head lang=\"en\">
     <meta charset=\"UTF-8\">
@@ -239,7 +245,7 @@ class StripeController extends PayController
                 <div class=\"text-align:center; margin:0 auto; width:60%\">
                 <div class=\"wrapper cardpay_content\" style=\"max-width:500px\">
                 <div class=\"am-alert am-alert-danger\" style=\"display:none\">支付失败，请更换卡片或检查输入信息</div>
-                    <form action=\"/pay/stripe/charge\" method=\"post\" id=\"payment-form\">
+                    <form action=\"$chargeUrl\" method=\"post\" id=\"payment-form\">
                         <div class=\"form-row\">
                             <label for=\"card-element\">
                                 <p class='am-alert am-alert-secondary'>借记卡或信用卡</p>
@@ -322,6 +328,9 @@ class StripeController extends PayController
         });
     });
 
+    // CSRF token is required for state-changing Stripe endpoints.
+    var csrfToken = '$csrfToken';
+
     // Submit the form with the token ID.
     function stripeTokenHandler(token) {
         // Insert the token ID into the form so it gets submitted to the server
@@ -339,8 +348,14 @@ class StripeController extends PayController
         // Submit the form
         //form.submit();
         $.ajax({
-            url: '/pay/stripe/charge/?orderid=$orderid&context=$context&stripeToken=' + token.id,
-            type: 'GET',
+            url: '$chargeUrl',
+            type: 'POST',
+            data: {
+                orderid: '$orderid',
+                context: '$context',
+                stripeToken: token.id,
+                _token: csrfToken
+            },
             success: function (result) {
                 if (result == \"success\") {
                     $(\".cardpay_content\").html(\"\");
@@ -377,8 +392,14 @@ class StripeController extends PayController
 
     function paymentcheck() {
         $.ajax({
-            url: '/pay/stripe/check/?orderid=$orderid&context=$context&stripe_usd_amount=$usd&source=' + source,
-            type: 'GET',
+            url: '$checkUrl',
+            type: 'POST',
+            data: {
+                orderid: '$orderid',
+                context: '$context',
+                source: source,
+                _token: csrfToken
+            },
             success: function (result) {
                 if (result == \"success\") {
                     $(\".wcpay-qrcode\").html(\"\");
@@ -387,8 +408,13 @@ class StripeController extends PayController
                         location.href = \"$return_url\"
                     }, 800);
                 } else {
-                    setTimeout(\"paymentcheck()\", 1000);
+                    // 3s 一次：既能及时反馈，也不会把自己打到支付路由的限流上
+                    setTimeout(paymentcheck, 3000);
                 }
+            },
+            error: function () {
+                // 429 / 网络错误时继续轮询，否则用户扫码稍慢就再也拿不到结果
+                setTimeout(paymentcheck, 5000);
             }
         });
     }
@@ -410,7 +436,7 @@ class StripeController extends PayController
                     $(\".wcpay-qrcode\").data(\"sid\", result.source.id);
                     $(\".wcpay-qrcode\").data(\"scs\", result.source.client_secret);
                     source = result.source.id;
-                    setTimeout(\"paymentcheck()\", 3000);
+                    setTimeout(paymentcheck, 3000);
                 } else {
                     alert(\"微信支付加载失败\");
                     $(\".wcpay-qrcode\").html(\"<p class='am-alert am-alert-danger'>加载失败，请刷新页面。</p>\");
@@ -425,7 +451,11 @@ class StripeController extends PayController
 
                     return $html;
                 } catch (\Exception $e) {
-                    throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel') . $e->getMessage());
+                    // 不再把原始异常文本回显给匿名访客（PQ-004-GET / CWE-209）
+                    Log::warning('Stripe gateway failed: '.$e->getMessage(), [
+                        'order_sn' => $orderSN,
+                    ]);
+                    throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
                 }
                 break;
         }
@@ -436,6 +466,10 @@ class StripeController extends PayController
 
         $data = $request->all();
         if (!$this->hasRequiredFields($data, ['orderid', 'source'])) {
+            // 卡支付成功后前端只带 orderid 回跳，不应显示裸 fail；有订单号就回详情页。
+            if (isset($data['orderid']) && is_scalar($data['orderid']) && trim((string) $data['orderid']) !== '') {
+                return redirect(url('detail-order-sn', ['orderSN' => (string) $data['orderid']]));
+            }
             return 'fail';
         }
         $cacheord = $this->orderService->detailOrderSN($data['orderid']);
@@ -446,7 +480,20 @@ class StripeController extends PayController
         if (!$payGateway || !$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/stripe')) {
             return redirect(url('detail-order-sn', ['orderSN' => $data['orderid']]));
         }
-        if ($request->filled('context') && !$this->validateOrderContextToken($cacheord, $request->input('context'))) {
+        if (
+            !$this->browserOwnsOrder($cacheord->order_sn) ||
+            !$request->filled('context')
+        ) {
+            return redirect(url('detail-order-sn', ['orderSN' => $data['orderid']]));
+        }
+        // 与 gateway() 构建 context 时相同的 extra，并且金额取自同一份按订单
+        // 缓存的汇率，否则正常合法的支付也会校验失败
+        try {
+            $stripeUsdAmount = $this->expectedUsdAmountForOrder($cacheord);
+        } catch (\Exception $e) {
+            return redirect(url('detail-order-sn', ['orderSN' => $data['orderid']]));
+        }
+        if (!$this->validateOrderContextToken($cacheord, $request->input('context'), ['stripe_usd_amount' => $stripeUsdAmount])) {
             return redirect(url('detail-order-sn', ['orderSN' => $data['orderid']]));
         }
         \Stripe\Stripe::setApiKey($payGateway -> merchant_pem);
@@ -474,7 +521,8 @@ class StripeController extends PayController
     {
 
         $data = $request->all();
-        if (!$this->hasRequiredFields($data, ['orderid', 'source'])) {
+        // context 必须无条件提交并校验，不再让客户端决定订单绑定（PQ-05）
+        if (!$this->hasRequiredFields($data, ['orderid', 'source', 'context'])) {
             return 'fail';
         }
         $cacheord = $this->orderService->detailOrderSN($data['orderid']);
@@ -482,18 +530,20 @@ class StripeController extends PayController
             //可能已异步回调成功，跳转
             return 'fail';
         } else {
-            $stripeUsdAmount = (int) $request->input(
-                'stripe_usd_amount',
-                bcmul($this->getUsdCurrency($cacheord->actual_price), 100, 0)
-            );
-            if (
-                $request->filled('context') &&
-                !$this->validateOrderContextToken($cacheord, $request->input('context'), ['stripe_usd_amount' => $stripeUsdAmount])
-            ) {
+            if (!$this->browserOwnsOrder($cacheord->order_sn)) {
                 return 'fail';
             }
             $payGateway = $this->payService->detail($cacheord->pay_id);
             if (!$payGateway || !$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/stripe')) {
+                return 'fail';
+            }
+            // 期望金额一律服务端计算（忽略请求里的 stripe_usd_amount），与 gateway() 一致
+            try {
+                $stripeUsdAmount = $this->expectedUsdAmountForOrder($cacheord);
+            } catch (\Exception $e) {
+                return 'fail';
+            }
+            if (!$this->validateOrderContextToken($cacheord, $request->input('context'), ['stripe_usd_amount' => $stripeUsdAmount])) {
                 return 'fail';
             }
             \Stripe\Stripe::setApiKey($payGateway -> merchant_pem);
@@ -533,16 +583,24 @@ class StripeController extends PayController
             return 'fail';
         } else {
             try {
-                if ($request->filled('context') && !$this->validateOrderContextToken($cacheord, $request->input('context'))) {
+                if (
+                    !$this->browserOwnsOrder($cacheord->order_sn) ||
+                    !$request->filled('context')
+                ) {
                     return 'fail';
                 }
                 $payGateway = $this->payService->detail($cacheord->pay_id);
                 if (!$payGateway || !$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/stripe')) {
                     return 'fail';
                 }
+                $stripeUsdAmount = $this->expectedUsdAmountForOrder($cacheord);
+                // 与 gateway() 构建 context 时相同的 extra，否则合法请求也会校验失败
+                if (!$this->validateOrderContextToken($cacheord, $request->input('context'), ['stripe_usd_amount' => $stripeUsdAmount])) {
+                    return 'fail';
+                }
                 \Stripe\Stripe::setApiKey($payGateway -> merchant_pem);
                 $result = \Stripe\Charge::create([
-                    'amount' => bcmul($this->getUsdCurrency($cacheord->actual_price), 100,0),
+                    'amount' => $stripeUsdAmount,
                     'currency' => 'usd',
                     'source' => $data['stripeToken'],
                 ]);
@@ -550,11 +608,69 @@ class StripeController extends PayController
                     $this->orderProcessService->completedOrder($data['orderid'], $cacheord->actual_price, $result->id);
                     return 'success';
                 }
-                return $result;
+                return 'fail';
             } catch (\Exception $e) {
-                return $e->getMessage();
+                \Illuminate\Support\Facades\Log::warning('Stripe charge failed: '.$e->getMessage(), [
+                    'order_sn' => $data['orderid'],
+                ]);
+                return 'fail';
             }
         }
+    }
+
+    /**
+     * 服务端计算订单应付的美元金额（美分）。
+     *
+     * 这是**原始换算**，每次调用都会访问汇率接口，结果会随行情变化。
+     * 支付链路不要直接用它，改用 expectedUsdAmountForOrder()，否则同一笔订单
+     * 在 gateway 与 check/charge 之间会算出不同金额，导致 context token 校验失败。
+     *
+     * @param mixed $cny
+     * @return int
+     * @throws \Exception
+     */
+    public function expectedUsdAmount($cny): int
+    {
+        return (int) bcmul($this->getUsdCurrency($cny), 100, 0);
+    }
+
+    /**
+     * 订单维度的美元金额（美分），同一订单在支付会话内保持稳定。
+     *
+     * 金额仍然完全由服务端计算（不接受客户端输入），但结果会按订单缓存：
+     * 汇率接口随时会变，若 check/charge/returnUrl 每次重新拉取，就会与
+     * gateway() 签进 context token 的金额不一致，合法支付会被判为 fail。
+     * 缓存不可用时降级为现算（仅丢失稳定性，不影响安全性）。
+     *
+     * @param Order $order
+     * @return int
+     * @throws \Exception
+     */
+    public function expectedUsdAmountForOrder(Order $order): int
+    {
+        $cacheKey = 'stripe_usd_amount:' . $order->order_sn;
+        try {
+            $cached = Cache::get($cacheKey);
+            if (is_numeric($cached)) {
+                return (int) $cached;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Stripe usd amount cache read failed: '.$e->getMessage(), [
+                'order_sn' => $order->order_sn,
+            ]);
+        }
+
+        $amount = $this->expectedUsdAmount($order->actual_price);
+
+        try {
+            Cache::put($cacheKey, $amount, now()->addHours(6));
+        } catch (\Throwable $e) {
+            Log::warning('Stripe usd amount cache write failed: '.$e->getMessage(), [
+                'order_sn' => $order->order_sn,
+            ]);
+        }
+
+        return $amount;
     }
 
     /**

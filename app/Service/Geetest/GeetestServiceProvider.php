@@ -15,11 +15,18 @@ class GeetestServiceProvider extends ServiceProvider
             ->middleware('web');
 
         Validator::extend('geetest', function ($attribute, $value, $parameters, $validator) {
-            [$challenge, $validate, $seccode] = array_values(request()->only([
-                'geetest_challenge',
-                'geetest_validate',
-                'geetest_seccode',
-            ]));
+            // 显式读参数并 fail closed：缺字段时不能靠解构/弱比较“碰巧”返回，
+            // 否则 PHP 8 下会抛 Undefined array key 把下单打成 500。（PQ-006）
+            $payload = request()->only(['geetest_challenge', 'geetest_validate', 'geetest_seccode']);
+            $challenge = $payload['geetest_challenge'] ?? null;
+            $validate = $payload['geetest_validate'] ?? null;
+            $seccode = $payload['geetest_seccode'] ?? null;
+            if (
+                !is_string($challenge) || !is_string($validate) || !is_string($seccode)
+                || $challenge === '' || $validate === '' || $seccode === ''
+            ) {
+                return false;
+            }
 
             $data = [
                 'user_id' => Auth::id() ?: 'UnLoginUser',
@@ -27,11 +34,18 @@ class GeetestServiceProvider extends ServiceProvider
                 'ip_address' => request()->ip(),
             ];
 
-            if (session()->get('gtserver') == 1) {
-                return Geetest::successValidate($challenge, $validate, $seccode, $data);
-            }
+            try {
+                if (session()->get('gtserver') == 1) {
+                    return (bool) Geetest::successValidate($challenge, $validate, $seccode, $data);
+                }
 
-            return Geetest::failValidate($challenge, $validate, $seccode);
+                return (bool) Geetest::failValidate($challenge, $validate, $seccode);
+            } catch (\Throwable $e) {
+                // 极验服务不可用时不要放行，也不要 500
+                \Illuminate\Support\Facades\Log::warning('Geetest validate failed: ' . $e->getMessage());
+
+                return false;
+            }
         });
     }
 

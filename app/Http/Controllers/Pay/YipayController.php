@@ -13,6 +13,10 @@ class YipayController extends PayController
         try {
             // 加载网关
             $this->loadGateWay($orderSN, $payway);
+            // 拒绝未配置或仍使用出厂占位符密钥的渠道（PQ-01）
+            if (!$this->payGateway->hasUsableYipayCredentials()) {
+                throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
+            }
             //组装支付参数
             $parameter = [
                 'pid' =>  $this->payGateway->merchant_id,
@@ -71,6 +75,10 @@ class YipayController extends PayController
             return 'fail';
         }
         if (!$this->isExpectedGatewayRoute($payGateway->pay_handleroute, '/pay/yipay')) {
+            return 'fail';
+        }
+        // 未配置或仍使用出厂占位符密钥的渠道直接拒绝回调（PQ-01）
+        if (!$payGateway->hasUsableYipayCredentials()) {
             return 'fail';
         }
         if (

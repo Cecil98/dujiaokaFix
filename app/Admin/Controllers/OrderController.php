@@ -109,7 +109,7 @@ class OrderController extends AdminController
             $show->field('actual_price');
             $show->field('buy_ip');
             $show->field('info')->unescape()->as(function ($info) {
-                return  "<textarea class=\"form-control field_wholesale_price_cnf _normal_\"  rows=\"10\" cols=\"30\">" . $info . "</textarea>";
+                return  "<textarea class=\"form-control field_wholesale_price_cnf _normal_\"  rows=\"10\" cols=\"30\">" . e((string) $info) . "</textarea>";
             });
             $show->field('pay.pay_name', admin_trans('order.fields.pay_id'));
             $show->field('status')->using(OrderModel::getStatusMap());

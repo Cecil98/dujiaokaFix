@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\RuleValidationException;
 use App\Models\Order;
 use App\Service\OrderProcessService;
+use Illuminate\Support\Facades\Cookie;
 
 class PayController extends BaseController
 {
@@ -118,6 +119,29 @@ class PayController extends BaseController
         }
 
         return true;
+    }
+
+    /**
+     * 当前浏览器是否持有该订单的归属凭据（下单时写入的 dujiaoka_orders cookie）。
+     * 用于 Stripe 等会改变资金状态的 GET/POST 入口，防止仅凭 order_sn 驱动扣款。
+     */
+    protected function browserOwnsOrder(string $orderSN): bool
+    {
+        $raw = Cookie::get('dujiaoka_orders');
+        if (!is_string($raw) || $raw === '') {
+            return false;
+        }
+        $orderSNS = json_decode($raw, true);
+        if (!is_array($orderSNS)) {
+            return false;
+        }
+        foreach ($orderSNS as $value) {
+            if (is_scalar($value) && hash_equals((string) $value, $orderSN)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function secureCompare($expected, $actual): bool

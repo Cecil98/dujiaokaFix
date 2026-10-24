@@ -32,6 +32,6 @@
   回滚旧代码前执行 `php artisan pay:decrypt-secrets`。
 - Docker 首次安装需显式 `INSTALL=true`；安装完成后改成 `INSTALL=false`，容器会写 `install.lock`。
 - HTTPS 生产环境设置 `SESSION_SECURE_COOKIE=true`，并保留 `APP_DEBUG=false`。
-- 安全审计记录见 `docs/security-audit/php83-upgrade/审计报告.md`。
+- 安全审计记录见 `docs/security-audit/dujiaoka-php83/审计报告.md`，整改记录见同目录 `整改说明.md`。
 - PHP_AUDIT_SKILLS 的 pi 适配设计与运行方式见 [`docs/php-audit-pi/design.md`](docs/php-audit-pi/design.md)。
 - 旧库升级/部署手册见 [`docs/php83-upgrade-deployment.md`](docs/php83-upgrade-deployment.md)。

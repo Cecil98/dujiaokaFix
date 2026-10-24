@@ -7,6 +7,29 @@ use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
+    public function testStripeStateChangingEndpointsArePostAndCsrfProtected(): void
+    {
+        foreach (['pay/stripe/check', 'pay/stripe/charge'] as $uri) {
+            $route = collect(Route::getRoutes()->getRoutes())->first(
+                fn ($route) => $route->uri() === $uri
+            );
+            $this->assertNotNull($route, $uri.' route must exist');
+            $this->assertContains('POST', $route->methods(), $uri.' must not mutate on GET');
+            $this->assertContains('web', $route->gatherMiddleware(), $uri.' must run the CSRF middleware');
+        }
+    }
+
+    public function testOrderCreationAndEmailLookupAreThrottled(): void
+    {
+        foreach (['create-order', 'search-order-by-email'] as $uri) {
+            $route = collect(Route::getRoutes()->getRoutes())->first(
+                fn ($route) => $route->uri() === $uri
+            );
+            $this->assertNotNull($route, $uri.' route must exist');
+            $this->assertContains('throttle:10,1', $route->gatherMiddleware(), $uri.' must be throttled');
+        }
+    }
+
     public function testOnlyEpayGatewayRoutesAreRegistered(): void
     {
         $uris = collect(Route::getRoutes()->getRoutes())->map(fn ($route) => $route->uri());

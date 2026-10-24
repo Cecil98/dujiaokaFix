@@ -115,13 +115,13 @@ class GoodsController extends AdminController
                 }
             });
             $show->wholesale_price_cnf()->unescape()->as(function ($wholesalePriceCnf) {
-                return  "<textarea class=\"form-control field_wholesale_price_cnf _normal_\"  rows=\"10\" cols=\"30\">" . $wholesalePriceCnf . "</textarea>";
+                return  "<textarea class=\"form-control field_wholesale_price_cnf _normal_\"  rows=\"10\" cols=\"30\">" . e((string) $wholesalePriceCnf) . "</textarea>";
             });
             $show->other_ipu_cnf()->unescape()->as(function ($otherIpuCnf) {
-                return  "<textarea class=\"form-control field_wholesale_price_cnf _normal_\"  rows=\"10\" cols=\"30\">" . $otherIpuCnf . "</textarea>";
+                return  "<textarea class=\"form-control field_wholesale_price_cnf _normal_\"  rows=\"10\" cols=\"30\">" . e((string) $otherIpuCnf) . "</textarea>";
             });
             $show->api_hook()->unescape()->as(function ($apiHook) {
-                return  "<textarea class=\"form-control field_wholesale_price_cnf _normal_\"  rows=\"10\" cols=\"30\">" . $apiHook . "</textarea>";
+                return  "<textarea class=\"form-control field_wholesale_price_cnf _normal_\"  rows=\"10\" cols=\"30\">" . e((string) $apiHook) . "</textarea>";
             });;
         });
     }

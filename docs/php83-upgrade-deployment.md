@@ -13,7 +13,7 @@
 | PHP | 7.4 | 8.3 |
 | Laravel | 6.x | 12.x |
 | 后台 | dcat 2.0 | dcat 2.2.5（自持 fork） |
-| 支付 | 多渠道 | 默认只启用易支付 `/pay/yipay`，其他渠道代码保留但 `is_open=0` |
+| 支付 | 多渠道 | 默认全部渠道 `is_open=0`；配置好易支付凭据后再手动启用 `/pay/yipay` |
 | 语言目录 | `resources/lang` | `lang/` |
 | 数据库 | 无 app migrations | 增加 dcat 扩展表、`failed_jobs.uuid`、migrations 记录 |
 | 支付密钥 | 明文 | 加密存储，后台打码 |
@@ -88,7 +88,7 @@ mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p "$DB_NAME" \
 1. 创建 `admin_extensions`、`admin_extension_histories`；
 2. 补齐 4 条 dcat migrations 记录（`WHERE NOT EXISTS`）；
 3. 给 `failed_jobs` 增加 `uuid`（若不存在）；
-4. 将 `pays.is_open` 全部置 0，仅启用 `/pay/yipay`；
+4. 将非易支付渠道、以及凭据为空/仍是占位符的易支付行置 0；已配置真实凭据的易支付行保留原有开关状态；
 5. 将 `pays.merchant_id` 扩为 `TEXT`（为加密后的密文留空间）。
 
 验证：
@@ -101,9 +101,18 @@ mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p "$DB_NAME" -e "
 "
 ```
 
-预期：两张扩展表存在；`failed_jobs.uuid` 存在；只有易支付三条 `is_open=1`。
+预期：两张扩展表存在；`failed_jobs.uuid` 存在；其他渠道全部 `is_open=0`；已配置真实凭据的易支付行保留升级前的开关状态，未被自动强制开启。
 
-> 如果你明确还要用其他渠道，请在升级完成后到后台重新开启对应 `pays.is_open`；默认按本期需求只留易支付。
+> **支付渠道默认全部关闭**（安全审计 PQ-01）。升级脚本会把非易支付渠道、以及凭据为空或仍是
+> 出厂占位符 `商户号` / `密钥` 的易支付行置 0；已配置真实凭据的易支付行保留原有开关状态，不会被自动改写。
+> 因此正确顺序是：**先到后台「支付配置」填好易支付商户号、网关地址（http/https URL）、商户密钥 → 再手动启用易支付**：
+>
+> ```sql
+> UPDATE `pays` SET `is_open` = 1 WHERE `pay_handleroute` = '/pay/yipay';
+> ```
+>
+> 未填写或仍是占位符的易支付渠道，即使 `is_open=1` 也会被拒绝下单/回调。
+> 如果你明确还要用其他渠道，请在升级完成后到后台手动开启对应 `pays.is_open`；其他渠道代码保留但不默认启用。
 
 ---
 
@@ -225,7 +234,8 @@ APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://你的域名
 
-# HTTPS 必须为 true；纯 HTTP 测试环境才为 false
+# 留空（不写该行）时框架按请求是否 HTTPS 自动加 Secure；
+# 站点始终在 TLS 后面时可显式写 true；纯 HTTP 环境不要写 true
 SESSION_SECURE_COOKIE=true
 SESSION_SAME_SITE=lax
 
@@ -383,9 +393,9 @@ curl -I https://你的域名/.env
 - 后台：商品、订单、卡密、优惠码、支付配置、系统设置、邮件测试页面可打开。
 - 后台：商品新增/编辑/删除；卡密导入/导出 xlsx。
 - 前台：首页 → 商品详情 → 下单 → 易支付跳转 → 异步回调 → 订单完成。
-- 易支付：同一订单重复回调不重复发货；金额不一致回调返回 `fail`。
+- 易支付：同一订单重复回调不重复发货；金额不一致回调返回 `fail`；未配置凭据的易支付渠道下单/回调被拒绝。
 - 邮件：后台“邮件测试”或下单邮件能入队/发送；`failed_jobs` 不应持续增长。
-- 其他渠道：前台默认不显示；后台 `pays.is_open` 仅易支付为 1。
+- 其他渠道：前台默认不显示；后台 `pays.is_open` 仅已配置并手动启用的渠道为 1。
 
 ### 8.4 日志
 
@@ -469,12 +479,12 @@ systemctl restart php8.3-fpm
 ## 11. 已知注意事项
 
 1. **APP_KEY 与支付密钥强绑定**：轮换前先解密，轮换后再加密；APP_KEY 必须单独备份。
-2. **`SESSION_SECURE_COOKIE=true` 只适用于 HTTPS**；纯 HTTP 环境设为 false，否则登录 Cookie 不会发送。
+2. **`SESSION_SECURE_COOKIE`**：`.env.example` 不再写死 `false`，留空时框架会按请求是否 HTTPS 自动加 `secure`；纯 HTTP 环境请保持不设置（写死 `true` 会导致登录 Cookie 不发送），站点始终在 TLS 后面时可显式设为 `true`。
 3. **`TRUSTED_PROXIES`**：只有确实位于反向代理之后才设置；否则不要信任 `X-Forwarded-For`。
 4. **`INSTALL=false`**：已有站点必须保持 false；首次安装临时 true，安装完成立刻改回。
-5. **`pays.is_open`**：升级脚本按“只启用易支付”重置；如确需其他渠道，升级后手动开启。
+5. **`pays.is_open`**：升级脚本会关闭其他渠道和未配置/占位符的易支付行，但不会覆盖已配置易支付行的手动开关（PQ-01：出厂占位符 `商户号` / `密钥` 不可用）；如确需其他渠道，升级后手动开启。
 6. **`box/spout`**：`dcat/easy-excel` 依赖的导出库已 abandoned，但没有已知安全公告；后续可评估替代。
-7. **静态审计**：完整动态利用审计需 Claude Code Agent Teams；本仓库已做 PHP_AUDIT_SKILLS 静态 + 定向动态复核，报告见 `docs/security-audit/php83-upgrade/审计报告.md`。
+7. **静态审计**：完整动态利用审计可运行 `.pi/workflows/php-audit-full.js`（需隔离环境）；本仓库已做 PHP_AUDIT_SKILLS 静态审计 + 定向复核，报告见 `docs/security-audit/dujiaoka-php83/审计报告.md`，整改记录见同目录 `整改说明.md`。
 8. **镜像**：当前仓库只打了本地 tag `v2.1.0-php83`，未远程 push；上线前需要你自行 push 镜像/tag 或使用 CI。
 
 ---

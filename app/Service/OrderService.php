@@ -16,6 +16,7 @@ use App\Models\Coupon;
 use App\Models\Goods;
 use App\Models\Carmis;
 use App\Models\Order;
+use App\Models\Pay;
 use App\Rules\SearchPwd;
 use App\Rules\VerifyImg;
 use Illuminate\Http\Request;
@@ -77,16 +78,42 @@ class OrderService
         if ($validator->fails()) {
             throw new RuleValidationException($validator->errors()->first());
         }
-        // 极验验证
-        if (
-            dujiaoka_config_get('is_open_geetest') == BaseModel::STATUS_OPEN
-            &&
-            !Validator::make($request->all(),
-                ['geetest_challenge' => 'geetest',],
-                [ 'geetest' => __('dujiaoka.prompt.geetest_validate_fail')])
+        // 极验验证：Validator::make() 返回对象，不能直接取反；必须检查 fails()。
+        // 注意必须带 required：自定义扩展规则对不存在的字段是「跳过」而不是「失败」，
+        // 否则攻击者只要不提交 geetest_challenge 就能绕过极验（PQ-006）。
+        if (dujiaoka_config_get('is_open_geetest') == BaseModel::STATUS_OPEN) {
+            $geetestValidator = Validator::make(
+                $request->all(),
+                ['geetest_challenge' => 'required|geetest'],
+                ['geetest' => __('dujiaoka.prompt.geetest_validate_fail')]
+            );
+            if ($geetestValidator->fails()) {
+                throw new RuleValidationException(__('dujiaoka.prompt.geetest_validate_fail'));
+            }
+        }
+        // 支付渠道校验：必须存在、已启用，易支付还需要可用凭据（PQ-01）
+        $this->validatorSelectedPay((int) $request->input('payway'));
+    }
 
-        ) {
-            throw new RuleValidationException(__('dujiaoka.prompt.geetest_validate_fail'));
+    /**
+     * 校验下单时选择的支付渠道。
+     *
+     * 防止客户端直接提交未启用、已删除或仍使用出厂占位符凭据的渠道 id。
+     *
+     * @param int $payID 支付渠道 id
+     * @throws RuleValidationException
+     */
+    public function validatorSelectedPay(int $payID): void
+    {
+        $pay = Pay::query()
+            ->where('id', $payID)
+            ->where('is_open', Pay::STATUS_OPEN)
+            ->first();
+        if (!$pay) {
+            throw new RuleValidationException(__('dujiaoka.prompt.please_select_mode_of_payment'));
+        }
+        if ($pay->isYipayGateway() && !$pay->hasUsableYipayCredentials()) {
+            throw new RuleValidationException(__('dujiaoka.prompt.abnormal_payment_channel'));
         }
     }
 
@@ -202,21 +229,31 @@ class OrderService
 
     /**
      * 通过订单号查询订单
-     * @param string $orderSN
+     * @param string $orderSN 订单号
+     * @param bool $lockForUpdate 是否加行锁（必须在事务内调用）
      * @return Order
      *
      * @author    assimon<ashang@utf8.hk>
      * @copyright assimon<ashang@utf8.hk>
      * @link      http://utf8.hk/
      */
-    public function detailOrderSN(string $orderSN):? Order
+    public function detailOrderSN(string $orderSN, bool $lockForUpdate = false):? Order
     {
-        $order = Order::query()->with(['coupon', 'pay', 'goods'])->where('order_sn', $orderSN)->first();
+        $order = Order::query()
+            ->with(['coupon', 'pay', 'goods'])
+            ->where('order_sn', $orderSN)
+            ->when($lockForUpdate, function ($query) {
+                $query->lockForUpdate();
+            })
+            ->first();
         return $order;
     }
 
     /**
      * 根据订单号过期订单.
+     *
+     * 只有待支付订单才会被置为已过期，并根据影响行数判断是否真的发生了变更
+     * （用于决定是否回退优惠券，见 PQ-02）。
      *
      * @param string $orderSN
      * @return bool
@@ -227,7 +264,11 @@ class OrderService
      */
     public function expiredOrderSN(string $orderSN): bool
     {
-        return Order::query()->where('order_sn', $orderSN)->update(['status' => Order::STATUS_EXPIRED]);
+        $affected = Order::query()
+            ->where('order_sn', $orderSN)
+            ->where('status', Order::STATUS_WAIT_PAY)
+            ->update(['status' => Order::STATUS_EXPIRED]);
+        return $affected > 0;
     }
 
     /**
@@ -248,20 +289,44 @@ class OrderService
     /**
      * 通过邮箱和查询密码查询
      *
+     * 为避免匿名者仅凭邮箱取走卡密（PQ-04），调用方必须提供归属证明：
+     * 查询密码或浏览器 cookie 里的订单号集合。两者都为空时返回空集合。
+     *
      * @param string $email 邮箱
-     * @param string $searchPwd 查询面面
-     * @return array|\Illuminate\Database\Concerns\BuildsQueries[]|\Illuminate\Database\Eloquent\Builder[]|\Illuminate\Database\Eloquent\Collection|\Illuminate\Database\Query\Builder[]|\Illuminate\Support\Collection
+     * @param string $searchPwd 查询密码
+     * @param array $orderSNS 订单号集合（通常来自 dujiaoka_orders cookie）
+     * @return \Illuminate\Database\Eloquent\Collection
      *
      * @author    assimon<ashang@utf8.hk>
      * @copyright assimon<ashang@utf8.hk>
      * @link      http://utf8.hk/
      */
-    public function withEmailAndPassword(string $email, string $searchPwd = '')
+    public function withEmailAndPassword(string $email, string $searchPwd = '', array $orderSNS = [])
     {
+        $orderSNS = array_values(array_unique(array_filter(
+            array_map(function ($orderSN) {
+                return is_scalar($orderSN) ? trim((string) $orderSN) : '';
+            }, $orderSNS),
+            function (string $orderSN) {
+                return $orderSN !== '';
+            }
+        )));
+
+        // 没有任何归属证明时不得按邮箱查询
+        if ($searchPwd === '' && empty($orderSNS)) {
+            return Order::query()->whereRaw('1 = 0')->get();
+        }
+
         return Order::query()
             ->where('email', $email)
-            ->when(!empty($searchPwd), function ($query) use ($searchPwd) {
+            ->when($searchPwd !== '', function ($query) use ($searchPwd) {
                 $query->where('search_pwd', $searchPwd);
+            })
+            // 只有「没有查询密码、仅靠浏览器 cookie」这条弱证明路径才用订单号
+            // 收窄结果；查询密码本身已是归属证明，不能再被 cookie 内容限制，
+            // 否则换浏览器/清 cookie 的老客户查不到自己的订单。
+            ->when($searchPwd === '' && !empty($orderSNS), function ($query) use ($orderSNS) {
+                $query->whereIn('order_sn', $orderSNS);
             })
             ->orderBy('created_at', 'DESC')
             ->take(5)

@@ -17,7 +17,7 @@ Route::group(['middleware' => ['dujiaoka.boot'],'namespace' => 'Home'], function
     // 商品详情
     Route::get('buy/{id}', 'HomeController@buy');
     // 提交订单
-    Route::post('create-order', 'OrderController@createOrder');
+    Route::post('create-order', 'OrderController@createOrder')->middleware('throttle:10,1');
     // 结算页
     Route::get('bill/{orderSN}', 'OrderController@bill');
     // 通过订单号详情页
@@ -29,7 +29,7 @@ Route::group(['middleware' => ['dujiaoka.boot'],'namespace' => 'Home'], function
     // 通过订单号查询
     Route::post('search-order-by-sn', 'OrderController@searchOrderBySN');
     // 通过邮箱查询
-    Route::post('search-order-by-email', 'OrderController@searchOrderByEmail');
+    Route::post('search-order-by-email', 'OrderController@searchOrderByEmail')->middleware('throttle:10,1');
     // 通过浏览器查询
     Route::post('search-order-by-browser', 'OrderController@searchOrderByBrowser');
 });

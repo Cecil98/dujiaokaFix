@@ -32,10 +32,10 @@ Route::group(['prefix' => 'pay', 'namespace' => 'Pay', 'middleware' => ['dujiaok
     Route::get('vpay/notify_url', 'VpayController@notifyUrl');
     Route::get('vpay/return_url', 'VpayController@returnUrl')->name('vpay-return');
     // stripe
-    Route::get('stripe/{payway}/{oid}','StripeController@gateway');
-    Route::get('stripe/return_url','StripeController@returnUrl');
-    Route::get('stripe/check','StripeController@check');
-    Route::get('stripe/charge','StripeController@charge');
+    Route::get('stripe/{payway}/{oid}','StripeController@gateway')->middleware('web');
+    Route::get('stripe/return_url','StripeController@returnUrl')->middleware(['web', 'throttle:30,1']);
+    Route::post('stripe/check','StripeController@check')->middleware(['web', 'throttle:30,1']);
+    Route::post('stripe/charge','StripeController@charge')->middleware(['web', 'throttle:30,1']);
     // Coinbase
     Route::get('coinbase/{payway}/{orderSN}', 'CoinbaseController@gateway');
     Route::post('coinbase/notify_url', 'CoinbaseController@notifyUrl');

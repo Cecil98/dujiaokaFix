@@ -121,16 +121,23 @@ class GoodsService
     /**
      * 库存减去
      *
+     * 原子条件扣减：只有 in_stock >= $number 时才会扣减，并根据受影响行数让调用方
+     * 回滚交易，避免库存被压成负数（PQ-06-C）。
+     *
      * @param int $id 商品id
      * @param int $number 出库数量
+     * @return int 受影响行数
      *
      * @author    assimon<ashang@utf8.hk>
      * @copyright assimon<ashang@utf8.hk>
      * @link      http://utf8.hk/
      */
-    public function inStockDecr(int $id, int $number = 1): bool
+    public function inStockDecr(int $id, int $number = 1): int
     {
-        return Goods::query()->where('id', $id)->decrement('in_stock', $number);
+        return (int) Goods::query()
+            ->where('id', $id)
+            ->where('in_stock', '>=', $number)
+            ->decrement('in_stock', $number);
     }
 
     /**

@@ -190,7 +190,9 @@ class OrderController extends BaseController
      */
     public function searchOrderBySN(Request $request)
     {
-        return $this->detailOrderSN($request->input('order_sn'));
+        // input() 可能返回 null/数组，强转为字符串避免 PHP 8 的 TypeError
+        $orderSN = $request->input('order_sn', '');
+        return $this->detailOrderSN(is_scalar($orderSN) ? trim((string) $orderSN) : '');
     }
 
     /**
@@ -205,20 +207,56 @@ class OrderController extends BaseController
      */
     public function searchOrderByEmail(Request $request)
     {
-        if (
-            !$request->has('email') ||
-            (
-                dujiaoka_config_get('is_open_search_pwd', \App\Models\BaseModel::STATUS_CLOSE) == \App\Models\BaseModel::STATUS_OPEN &&
-                !$request->has('search_pwd')
-            )
-        ) {
+        $email = (string) $request->input('email', '');
+        if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
             return $this->err(__('dujiaoka.prompt.server_illegal_request'));
         }
-        $orders = $this->orderService->withEmailAndPassword($request->input('email'), $request->input('search_pwd',''));
-        if (!$orders) {
+        $searchPwd = trim((string) $request->input('search_pwd', ''));
+        $searchPwdRequired = dujiaoka_config_get(
+            'is_open_search_pwd',
+            \App\Models\BaseModel::STATUS_CLOSE
+        ) == \App\Models\BaseModel::STATUS_OPEN;
+        if ($searchPwdRequired && $searchPwd === '') {
+            return $this->err(__('dujiaoka.prompt.server_illegal_request'));
+        }
+        // 浏览器 cookie 里记录的订单号属于归属证明（PQ-04）
+        $orderSNS = $this->cookieOrderSNS();
+        if ($searchPwd === '' && empty($orderSNS)) {
+            return $this->err(__('dujiaoka.prompt.no_related_order_found'));
+        }
+        $orders = $this->orderService->withEmailAndPassword($email, $searchPwd, $orderSNS);
+        if ($orders->isEmpty()) {
             return $this->err(__('dujiaoka.prompt.no_related_order_found'));
         }
         return $this->render('static_pages/orderinfo', ['orders' => $orders], __('dujiaoka.page-title.order-detail'));
+    }
+
+    /**
+     * 读取并净化浏览器 cookie 中的订单号集合。
+     *
+     * @return array
+     */
+    private function cookieOrderSNS(): array
+    {
+        $cookies = Cookie::get('dujiaoka_orders');
+        if (!is_string($cookies) || $cookies === '') {
+            return [];
+        }
+        $decoded = json_decode($cookies, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+        $orderSNS = [];
+        foreach ($decoded as $orderSN) {
+            if (!is_scalar($orderSN)) {
+                continue;
+            }
+            $orderSN = trim((string) $orderSN);
+            if ($orderSN !== '' && strlen($orderSN) <= 64) {
+                $orderSNS[] = $orderSN;
+            }
+        }
+        return array_values(array_unique($orderSNS));
     }
 
     /**
@@ -232,11 +270,10 @@ class OrderController extends BaseController
      */
     public function searchOrderByBrowser(Request $request)
     {
-        $cookies = Cookie::get('dujiaoka_orders');
-        if (empty($cookies)) {
+        $orderSNS = $this->cookieOrderSNS();
+        if (empty($orderSNS)) {
             return $this->err(__('dujiaoka.prompt.no_related_order_found_for_cache'));
         }
-        $orderSNS = json_decode($cookies, true);
         $orders = $this->orderService->byOrderSNS($orderSNS);
         return $this->render('static_pages/orderinfo', ['orders' => $orders], __('dujiaoka.page-title.order-detail'));
     }

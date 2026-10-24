@@ -48,17 +48,22 @@ class CouponService
 
     /**
      * 设置优惠券使用次数 -1
+     *
+     * 原子条件扣减：只有 ret > 0 时才会自减，避免并发下先查后减把次数扣成负数
+     * （PQ-06-A）。返回受影响行数，调用方为 0 时应回滚事务。
+     *
      * @param string $coupon
-     * @return int
+     * @return int 受影响行数
      *
      * @author    assimon<ashang@utf8.hk>
      * @copyright assimon<ashang@utf8.hk>
      * @link      http://utf8.hk/
      */
-    public function retDecr(string $coupon)
+    public function retDecr(string $coupon): int
     {
-        return Coupon::query()
+        return (int) Coupon::query()
             ->where('coupon',  $coupon)
+            ->where('ret', '>', 0)
             ->decrement('ret', 1);
     }
 

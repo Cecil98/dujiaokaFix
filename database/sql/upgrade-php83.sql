@@ -61,9 +61,25 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- 4) Only enable epay (yipay); keep other channels in DB but disabled
-UPDATE `pays` SET `is_open` = 0;
-UPDATE `pays` SET `is_open` = 1 WHERE `pay_handleroute` = '/pay/yipay';
+-- 4) Disable every non-yipay channel, and every yipay row whose credentials are
+--    still empty or the public install.sql placeholders. Those placeholders are
+--    not secrets and must never be usable as signing keys (PQ-01).
+--
+--    A yipay row with real credentials keeps its current is_open value: on a
+--    fresh install it is already 0, and re-running this script must not override
+--    an operator who deliberately disabled it. Enable it manually after filling
+--    in the three credential fields:
+--      UPDATE `pays` SET `is_open` = 1 WHERE `pay_handleroute` = '/pay/yipay';
+UPDATE `pays`
+   SET `is_open` = 0
+ WHERE `deleted_at` IS NOT NULL
+    OR TRIM(BOTH '/' FROM COALESCE(`pay_handleroute`, '')) <> 'pay/yipay'
+    OR `merchant_id` IS NULL
+    OR TRIM(`merchant_id`) IN ('', '商户号')
+    OR `merchant_key` IS NULL
+    OR TRIM(`merchant_key`) = ''
+    OR `merchant_pem` IS NULL
+    OR TRIM(`merchant_pem`) IN ('', '密钥');
 
 -- 5) Payment credentials are encrypted with APP_KEY; the old varchar(200)
 --    merchant_id cannot hold the encrypted payload. TEXT is backwards

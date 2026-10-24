@@ -18,20 +18,23 @@ class PayService
     /**
      * 加载支付网关
      *
+     * 没有可用渠道时返回空数组而不是 null：buy 视图会直接 @foreach($payways)，
+     * foreach(null) 在 PHP 8 是 E_WARNING，会被框架转成 500。
+     *
      * @param string|int $payClient 支付场景客户端
-     * @return array|null
+     * @return array
      *
      * @author    assimon<ashang@utf8.hk>
      * @copyright assimon<ashang@utf8.hk>
      * @link      http://utf8.hk/
      */
-    public function pays(string $payClient = Pay::PAY_CLIENT_PC): ?array
+    public function pays(string $payClient = Pay::PAY_CLIENT_PC): array
     {
         $payGateway = Pay::query()
             ->whereIn('pay_client', [$payClient, Pay::PAY_CLIENT_ALL])
             ->where('is_open', Pay::STATUS_OPEN)
             ->get();
-        return $payGateway ? $payGateway->toArray() : null;
+        return $payGateway->toArray();
     }
 
     /**
