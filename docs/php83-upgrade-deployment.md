@@ -19,7 +19,9 @@
 | 支付密钥 | 明文 | 加密存储，后台打码 |
 | 邮件 | Laravel 6 Mail | Laravel 12 Symfony Mailer |
 | 后台登录 | 无限流 | 5 次/分钟 + 默认密码强制修改 |
-| 上传目录 | 可能可执行 PHP | Nginx 禁止 `uploads/`、`storage/` 下 PHP |
+| 上传目录 | 可能可执行 PHP | Nginx 禁止 `uploads/`、`storage/` 下 PHP 及 phtml/phar；上传目录只允许 GET/HEAD |
+| PHP 运行时 | 默认配置 | `display_errors=Off`、`expose_php=Off`、禁用 shell 函数、严格 session cookie |
+| 响应头 | 基础头 | 增加 HSTS、CSP `frame-ancestors/base-uri/object-src`、上传目录 CSP sandbox |
 
 **升级顺序不能颠倒**：备份 → 停流量/维护模式 → 数据库 SQL → 新代码/镜像 → `.env`/APP_KEY → Artisan 命令 → 冒烟 → 放流量。
 

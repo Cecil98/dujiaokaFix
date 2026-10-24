@@ -73,6 +73,21 @@ Project-specific security contracts for the Dujiaoka PHP 8.3 / Laravel 12 codeba
 - `OrderExpired` may dispatch coupon rollback only when the conditional
   `WAIT_PAY -> EXPIRED` update actually changed a row.
 
+## PHP and Nginx runtime
+
+- Keep `display_errors`/`display_startup_errors` off, `expose_php` off and
+  `log_errors` on.
+- Keep the runtime `disable_functions` list free of `curl_exec` (Guzzle/Stripe/
+  mail need it), but do not re-enable shell functions (`exec`, `system`,
+  `proc_open`, `popen`, etc.).
+- Keep `session.use_strict_mode`, `use_only_cookies`, `cookie_httponly`, and
+  `cookie_samesite=Lax` enabled.
+- `/uploads/` and `/storage/` allow only GET/HEAD, deny PHP/phtml/phar, and
+  send `Content-Security-Policy: default-src 'none'; sandbox`.
+- Keep HSTS, `frame-ancestors`, `base-uri`, `object-src 'none'` and
+  `X-Permitted-Cross-Domain-Policies` on the server block. HSTS requires HTTPS
+  at the edge; do not add `includeSubDomains` unless every subdomain is HTTPS.
+
 ## Payment callbacks
 
 - Verify the gateway signature with `hash_equals`/`secureCompare`.
