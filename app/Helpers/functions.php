@@ -155,11 +155,21 @@ if (! function_exists('site_url')) {
      * 获取顶级域名 带协议
      * @return string
      */
-    function site_url()
+    function site_url(): string
     {
-        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
-        $domainName = $_SERVER['HTTP_HOST'] . '/';
-        return $protocol . $domainName;
+        $request = request();
+        $url = $request->getSchemeAndHttpHost();
+
+        // CLI / queue context: fall back to the configured application URL.
+        if (! $url || $url === 'http://localhost') {
+            $url = rtrim((string) config('app.url'), '/');
+        }
+
+        if ($url === '') {
+            $url = 'http://localhost';
+        }
+
+        return rtrim($url, '/') . '/';
     }
 }
 

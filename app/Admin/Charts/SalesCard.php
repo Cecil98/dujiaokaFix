@@ -81,7 +81,7 @@ class SalesCard extends Bar
             ->pluck('actual_price')
             ->toArray();
         $totalPrice = array_sum($orderGroup);
-        $this->withContent($totalPrice, '', '', $startTime, $endTime);
+        $this->withContent($totalPrice, '', $startTime, $endTime, '');
         $this->withChart([
             [
                 'name' => admin_trans('dujiaoka.sales_chart'),
@@ -113,7 +113,7 @@ class SalesCard extends Bar
      *
      * @return $this
      */
-    public function withContent($title, $value, $style = 'success', $startTime, $endTime)
+    public function withContent($title, $value, $startTime, $endTime, $style = 'success')
     {
         $minHeight = '183px';
         $uri = admin_route('order.index', [

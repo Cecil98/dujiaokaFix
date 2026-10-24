@@ -2,20 +2,19 @@
 
 namespace Tests\Feature;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
-    /**
-     * A basic test example.
-     *
-     * @return void
-     */
-    public function testBasicTest()
+    public function testOnlyEpayGatewayRoutesAreRegistered(): void
     {
-        $response = $this->get('/');
+        $uris = collect(Route::getRoutes()->getRoutes())->map(fn ($route) => $route->uri());
 
-        $response->assertStatus(200);
+        $this->assertTrue($uris->contains('pay/yipay/{payway}/{orderSN}'));
+        $this->assertTrue($uris->contains('pay/yipay/notify_url'));
+        $this->assertFalse($uris->contains('pay/alipay/{payway}/{orderSN}'));
+        $this->assertFalse($uris->contains('pay/wepay/{payway}/{orderSN}'));
+        $this->assertFalse($uris->contains('pay/paypal/{payway}/{orderSN}'));
     }
 }

@@ -185,6 +185,38 @@ CREATE TABLE `admin_settings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
+-- Table structure for admin_extensions
+-- ----------------------------
+DROP TABLE IF EXISTS `admin_extensions`;
+CREATE TABLE `admin_extensions` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  `version` varchar(20) NOT NULL DEFAULT '',
+  `is_enabled` tinyint NOT NULL DEFAULT '0',
+  `options` text,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `admin_extensions_name_unique` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------
+-- Table structure for admin_extension_histories
+-- ----------------------------
+DROP TABLE IF EXISTS `admin_extension_histories`;
+CREATE TABLE `admin_extension_histories` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  `type` tinyint NOT NULL DEFAULT '1',
+  `version` varchar(20) NOT NULL DEFAULT '0',
+  `detail` text,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `admin_extension_histories_name_index` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------
 -- Records of admin_settings
 -- ----------------------------
 BEGIN;
@@ -311,12 +343,14 @@ COMMIT;
 DROP TABLE IF EXISTS `failed_jobs`;
 CREATE TABLE `failed_jobs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `uuid` varchar(255) DEFAULT NULL,
   `connection` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `queue` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `payload` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `exception` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `failed_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `failed_jobs_uuid_unique` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
@@ -397,6 +431,10 @@ CREATE TABLE `migrations` (
 -- Records of migrations
 -- ----------------------------
 BEGIN;
+INSERT INTO `migrations` VALUES (1, '2016_01_04_173148_create_admin_tables', 1);
+INSERT INTO `migrations` VALUES (2, '2020_09_07_090635_create_admin_settings_table', 1);
+INSERT INTO `migrations` VALUES (3, '2020_09_22_015815_create_admin_extensions_table', 1);
+INSERT INTO `migrations` VALUES (4, '2020_11_01_083237_update_admin_menu_table', 1);
 COMMIT;
 
 -- ----------------------------
@@ -497,6 +535,10 @@ INSERT INTO `pays` VALUES (33,'USDT-Polygon', 'tokenpay-usdt-polygon', 1, 3, 'EV
 INSERT INTO `pays` VALUES (34,'USDC-Polygon', 'tokenpay-usdc-polygon', 1, 3, 'EVM_Polygon_USDC_ERC20', '你的API密钥', 'https://token-pay.xxx.com', 'pay/tokenpay', 1, now(), now(), NULL);
 
 -- ----------------------------
+-- Only enable epay (yipay) by default
+UPDATE `pays` SET `is_open` = 0;
+UPDATE `pays` SET `is_open` = 1 WHERE `pay_handleroute` = '/pay/yipay';
+
 COMMIT;
 
 SET FOREIGN_KEY_CHECKS = 1;

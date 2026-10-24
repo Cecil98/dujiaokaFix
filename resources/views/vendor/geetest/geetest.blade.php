@@ -3,7 +3,7 @@
 <div id="{{ $captchaid }}"></div>
 <p id="wait-{{ $captchaid }}" class="show">loading...</p>
 <!-- wcccc -->
-@define use Illuminate\Support\Facades\Config
+@php use Illuminate\Support\Facades\Config; @endphp
 <script>
     var geetest = function(url) {
         var handlerEmbed = function(captchaObj) {

@@ -176,7 +176,7 @@ return [
         App\Providers\RouteServiceProvider::class,
 
         Jenssegers\Agent\AgentServiceProvider::class,
-        Germey\Geetest\GeetestServiceProvider::class
+        App\Service\Geetest\GeetestServiceProvider::class
 
 
     ],
@@ -231,7 +231,7 @@ return [
         'View' => Illuminate\Support\Facades\View::class,
 
         'Agent' => Jenssegers\Agent\Facades\Agent::class,
-        'Geetest' => Germey\Geetest\Geetest::class,
+        'Geetest' => App\Service\Geetest\Geetest::class,
     ],
 
 ];

@@ -12,7 +12,7 @@ namespace App\Admin\Forms;
 use App\Models\BaseModel;
 use Dcat\Admin\Widgets\Form;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Mail\MailServiceProvider;
+use App\Service\MailConfigService;
 use Illuminate\Support\Facades\Mail;
 
 class EmailTest extends Form
@@ -29,28 +29,11 @@ class EmailTest extends Form
       $to = $input['to'];
       $title = $input['title'];
       $body = $input['body'];
-      $sysConfig = cache('system-setting');
-      $mailConfig = [
-          'driver' => $sysConfig['driver'] ?? 'smtp',
-          'host' => $sysConfig['host'] ?? '',
-          'port' => $sysConfig['port'] ?? '465',
-          'username' => $sysConfig['username'] ?? '',
-          'from'      =>  [
-              'address'   =>   $sysConfig['from_address'] ?? '',
-              'name'      =>  $sysConfig['from_name'] ?? '独角发卡'
-          ],
-          'password' => $sysConfig['password'] ?? '',
-          'encryption' => $sysConfig['encryption'] ?? 'ssl'
-      ];
-      //  覆盖 mail 配置
-      config([
-          'mail'  =>  array_merge(config('mail'), $mailConfig)
-      ]);
-      // 重新注册驱动
-      (new MailServiceProvider(app()))->register();
+      $sysConfig = cache('system-setting') ?: [];
+      MailConfigService::apply($sysConfig);
 	  try
 	  {
-		  Mail::send(['html' => 'email.mail'], ['body' => $body], function ($message) use ($to, $title){
+		  Mail::send('email.mail', ['body' => $body], function ($message) use ($to, $title){
 			  $message->to($to)->subject($title);
 		  });
 	  }
