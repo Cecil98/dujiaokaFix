@@ -1,0 +1,860 @@
+{
+    "scan_time": "2026-10-24T05:47:40+00:00",
+    "target_dir": "/app/app",
+    "total_files": 107,
+    "parse_errors": 0,
+    "error_files": [],
+    "total_sinks": 50,
+    "sinks": [
+        {
+            "file": "Admin/Charts/SuccessOrderCard.php",
+            "line": 67,
+            "sink_type": "SQLi",
+            "function": "DB::raw",
+            "call_type": "static_call",
+            "args": [
+                "'DATE(created_at) as date'"
+            ],
+            "arg_safety": [
+                "safe"
+            ],
+            "in_function": "SuccessOrderCard::handle",
+            "in_class": "App\\Admin\\Charts\\SuccessOrderCard",
+            "namespace": "App\\Admin\\Charts"
+        },
+        {
+            "file": "Admin/Charts/SuccessOrderCard.php",
+            "line": 67,
+            "sink_type": "SQLi",
+            "function": "DB::raw",
+            "call_type": "static_call",
+            "args": [
+                "'count(id) as num'"
+            ],
+            "arg_safety": [
+                "safe"
+            ],
+            "in_function": "SuccessOrderCard::handle",
+            "in_class": "App\\Admin\\Charts\\SuccessOrderCard",
+            "namespace": "App\\Admin\\Charts"
+        },
+        {
+            "file": "Admin/Charts/DashBoard.php",
+            "line": 69,
+            "sink_type": "SQLi",
+            "function": "DB::raw",
+            "call_type": "static_call",
+            "args": [
+                "'count(id) as num'"
+            ],
+            "arg_safety": [
+                "safe"
+            ],
+            "in_function": "DashBoard::handle",
+            "in_class": "App\\Admin\\Charts\\DashBoard",
+            "namespace": "App\\Admin\\Charts"
+        },
+        {
+            "file": "Admin/Charts/SalesCard.php",
+            "line": 79,
+            "sink_type": "SQLi",
+            "function": "DB::raw",
+            "call_type": "static_call",
+            "args": [
+                "'DATE(created_at) as date'"
+            ],
+            "arg_safety": [
+                "safe"
+            ],
+            "in_function": "SalesCard::handle",
+            "in_class": "App\\Admin\\Charts\\SalesCard",
+            "namespace": "App\\Admin\\Charts"
+        },
+        {
+            "file": "Admin/Charts/SalesCard.php",
+            "line": 79,
+            "sink_type": "SQLi",
+            "function": "DB::raw",
+            "call_type": "static_call",
+            "args": [
+                "'sum(actual_price) as actual_price'"
+            ],
+            "arg_safety": [
+                "safe"
+            ],
+            "in_function": "SalesCard::handle",
+            "in_class": "App\\Admin\\Charts\\SalesCard",
+            "namespace": "App\\Admin\\Charts"
+        },
+        {
+            "file": "Console/Kernel.php",
+            "line": 38,
+            "sink_type": "XXE",
+            "function": "->load()",
+            "call_type": "method_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "Kernel::commands",
+            "in_class": "App\\Console\\Kernel",
+            "namespace": "App\\Console"
+        },
+        {
+            "file": "Http/Controllers/Home/HomeController.php",
+            "line": 188,
+            "sink_type": "LFI",
+            "function": "file_get_contents",
+            "call_type": "func_call",
+            "args": [
+                "$envExamplePath"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "HomeController::doInstall",
+            "in_class": "App\\Http\\Controllers\\Home\\HomeController",
+            "namespace": "App\\Http\\Controllers\\Home"
+        },
+        {
+            "file": "Http/Controllers/Home/HomeController.php",
+            "line": 202,
+            "sink_type": "FileWrite",
+            "function": "file_put_contents",
+            "call_type": "func_call",
+            "args": [
+                "$envPath",
+                "$envTemp"
+            ],
+            "arg_safety": [
+                "needs_trace",
+                "needs_trace"
+            ],
+            "in_function": "HomeController::doInstall",
+            "in_class": "App\\Http\\Controllers\\Home\\HomeController",
+            "namespace": "App\\Http\\Controllers\\Home"
+        },
+        {
+            "file": "Http/Controllers/Home/HomeController.php",
+            "line": 202,
+            "sink_type": "RaceCondition",
+            "function": "file_put_contents() without LOCK_EX",
+            "call_type": "race_condition",
+            "args": [
+                "$envPath",
+                "$envTemp"
+            ],
+            "arg_safety": [
+                "needs_trace",
+                "needs_trace"
+            ],
+            "in_function": "HomeController::doInstall",
+            "in_class": "App\\Http\\Controllers\\Home\\HomeController",
+            "namespace": "App\\Http\\Controllers\\Home"
+        },
+        {
+            "file": "Http/Controllers/Home/HomeController.php",
+            "line": 204,
+            "sink_type": "LFI",
+            "function": "file_get_contents",
+            "call_type": "func_call",
+            "args": [
+                "$installSql"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "HomeController::doInstall",
+            "in_class": "App\\Http\\Controllers\\Home\\HomeController",
+            "namespace": "App\\Http\\Controllers\\Home"
+        },
+        {
+            "file": "Http/Controllers/Home/HomeController.php",
+            "line": 216,
+            "sink_type": "FileWrite",
+            "function": "file_put_contents",
+            "call_type": "func_call",
+            "args": [
+                "$installLock",
+                "'install ok'"
+            ],
+            "arg_safety": [
+                "needs_trace",
+                "safe"
+            ],
+            "in_function": "HomeController::doInstall",
+            "in_class": "App\\Http\\Controllers\\Home\\HomeController",
+            "namespace": "App\\Http\\Controllers\\Home"
+        },
+        {
+            "file": "Http/Controllers/Home/HomeController.php",
+            "line": 216,
+            "sink_type": "RaceCondition",
+            "function": "file_put_contents() without LOCK_EX",
+            "call_type": "race_condition",
+            "args": [
+                "$installLock",
+                "'install ok'"
+            ],
+            "arg_safety": [
+                "needs_trace",
+                "safe"
+            ],
+            "in_function": "HomeController::doInstall",
+            "in_class": "App\\Http\\Controllers\\Home\\HomeController",
+            "namespace": "App\\Http\\Controllers\\Home"
+        },
+        {
+            "file": "Http/Controllers/Pay/YipayController.php",
+            "line": 41,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "YipayController::gateway",
+            "in_class": "App\\Http\\Controllers\\Pay\\YipayController",
+            "namespace": "App\\Http\\Controllers\\Pay"
+        },
+        {
+            "file": "Http/Controllers/Pay/YipayController.php",
+            "line": 94,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "YipayController::notifyUrl",
+            "in_class": "App\\Http\\Controllers\\Pay\\YipayController",
+            "namespace": "App\\Http\\Controllers\\Pay"
+        },
+        {
+            "file": "Http/Controllers/Pay/EpusdtController.php",
+            "line": 67,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "EpusdtController::epusdtSign",
+            "in_class": "App\\Http\\Controllers\\Pay\\EpusdtController",
+            "namespace": "App\\Http\\Controllers\\Pay"
+        },
+        {
+            "file": "Http/Controllers/Pay/PaysapiController.php",
+            "line": 39,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "PaysapiController::gateway",
+            "in_class": "App\\Http\\Controllers\\Pay\\PaysapiController",
+            "namespace": "App\\Http\\Controllers\\Pay"
+        },
+        {
+            "file": "Http/Controllers/Pay/PaysapiController.php",
+            "line": 101,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "PaysapiController::notifyUrl",
+            "in_class": "App\\Http\\Controllers\\Pay\\PaysapiController",
+            "namespace": "App\\Http\\Controllers\\Pay"
+        },
+        {
+            "file": "Http/Controllers/Pay/VpayController.php",
+            "line": 43,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "VpayController::gateway",
+            "in_class": "App\\Http\\Controllers\\Pay\\VpayController",
+            "namespace": "App\\Http\\Controllers\\Pay"
+        },
+        {
+            "file": "Http/Controllers/Pay/VpayController.php",
+            "line": 79,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "VpayController::notifyUrl",
+            "in_class": "App\\Http\\Controllers\\Pay\\VpayController",
+            "namespace": "App\\Http\\Controllers\\Pay"
+        },
+        {
+            "file": "Http/Controllers/Pay/TokenPayController.php",
+            "line": 67,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "TokenPayController::VerifySign",
+            "in_class": "App\\Http\\Controllers\\Pay\\TokenPayController",
+            "namespace": "App\\Http\\Controllers\\Pay"
+        },
+        {
+            "file": "Http/Controllers/Pay/MapayController.php",
+            "line": 75,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "MapayController::notifyUrl",
+            "in_class": "App\\Http\\Controllers\\Pay\\MapayController",
+            "namespace": "App\\Http\\Controllers\\Pay"
+        },
+        {
+            "file": "Http/Controllers/Pay/CoinbaseController.php",
+            "line": 58,
+            "sink_type": "SSRF",
+            "function": "curl_exec",
+            "call_type": "func_call",
+            "args": [
+                "$ch"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "CoinbaseController::gateway",
+            "in_class": "App\\Http\\Controllers\\Pay\\CoinbaseController",
+            "namespace": "App\\Http\\Controllers\\Pay"
+        },
+        {
+            "file": "Http/Controllers/Pay/CoinbaseController.php",
+            "line": 83,
+            "sink_type": "LFI",
+            "function": "file_get_contents",
+            "call_type": "func_call",
+            "args": [
+                "'php://input'"
+            ],
+            "arg_safety": [
+                "safe"
+            ],
+            "in_function": "CoinbaseController::notifyUrl",
+            "in_class": "App\\Http\\Controllers\\Pay\\CoinbaseController",
+            "namespace": "App\\Http\\Controllers\\Pay"
+        },
+        {
+            "file": "Http/Middleware/SecurityHeaders.php",
+            "line": 13,
+            "sink_type": "RCE",
+            "function": "$next()",
+            "call_type": "dynamic_call",
+            "args": [
+                "$request"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "SecurityHeaders::handle",
+            "in_class": "App\\Http\\Middleware\\SecurityHeaders",
+            "namespace": "App\\Http\\Middleware"
+        },
+        {
+            "file": "Http/Middleware/ForceAdminPasswordChange.php",
+            "line": 17,
+            "sink_type": "RCE",
+            "function": "$next()",
+            "call_type": "dynamic_call",
+            "args": [
+                "$request"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "ForceAdminPasswordChange::handle",
+            "in_class": "App\\Http\\Middleware\\ForceAdminPasswordChange",
+            "namespace": "App\\Http\\Middleware"
+        },
+        {
+            "file": "Http/Middleware/ForceAdminPasswordChange.php",
+            "line": 29,
+            "sink_type": "RCE",
+            "function": "$next()",
+            "call_type": "dynamic_call",
+            "args": [
+                "$request"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "ForceAdminPasswordChange::handle",
+            "in_class": "App\\Http\\Middleware\\ForceAdminPasswordChange",
+            "namespace": "App\\Http\\Middleware"
+        },
+        {
+            "file": "Http/Middleware/ForceAdminPasswordChange.php",
+            "line": 47,
+            "sink_type": "RCE",
+            "function": "$next()",
+            "call_type": "dynamic_call",
+            "args": [
+                "$request"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "ForceAdminPasswordChange::handle",
+            "in_class": "App\\Http\\Middleware\\ForceAdminPasswordChange",
+            "namespace": "App\\Http\\Middleware"
+        },
+        {
+            "file": "Http/Middleware/DujiaoSystem.php",
+            "line": 29,
+            "sink_type": "RCE",
+            "function": "$next()",
+            "call_type": "dynamic_call",
+            "args": [
+                "$request"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "DujiaoSystem::handle",
+            "in_class": "App\\Http\\Middleware\\DujiaoSystem",
+            "namespace": "App\\Http\\Middleware"
+        },
+        {
+            "file": "Http/Middleware/PayGateWay.php",
+            "line": 19,
+            "sink_type": "RCE",
+            "function": "$next()",
+            "call_type": "dynamic_call",
+            "args": [
+                "$request"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "PayGateWay::handle",
+            "in_class": "App\\Http\\Middleware\\PayGateWay",
+            "namespace": "App\\Http\\Middleware"
+        },
+        {
+            "file": "Http/Middleware/TrustProxies.php",
+            "line": 33,
+            "sink_type": "RCE",
+            "function": "array_map",
+            "call_type": "func_call",
+            "args": [
+                "'trim'",
+                "<call>"
+            ],
+            "arg_safety": [
+                "safe",
+                "needs_trace"
+            ],
+            "in_function": "TrustProxies::__construct",
+            "in_class": "App\\Http\\Middleware\\TrustProxies",
+            "namespace": "App\\Http\\Middleware"
+        },
+        {
+            "file": "Http/Middleware/InstallCheck.php",
+            "line": 23,
+            "sink_type": "RCE",
+            "function": "$next()",
+            "call_type": "dynamic_call",
+            "args": [
+                "$request"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "InstallCheck::handle",
+            "in_class": "App\\Http\\Middleware\\InstallCheck",
+            "namespace": "App\\Http\\Middleware"
+        },
+        {
+            "file": "Http/Middleware/RedirectIfAuthenticated.php",
+            "line": 25,
+            "sink_type": "RCE",
+            "function": "$next()",
+            "call_type": "dynamic_call",
+            "args": [
+                "$request"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "RedirectIfAuthenticated::handle",
+            "in_class": "App\\Http\\Middleware\\RedirectIfAuthenticated",
+            "namespace": "App\\Http\\Middleware"
+        },
+        {
+            "file": "Http/Middleware/DujiaoBoot.php",
+            "line": 54,
+            "sink_type": "RCE",
+            "function": "$next()",
+            "call_type": "dynamic_call",
+            "args": [
+                "$request"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "DujiaoBoot::handle",
+            "in_class": "App\\Http\\Middleware\\DujiaoBoot",
+            "namespace": "App\\Http\\Middleware"
+        },
+        {
+            "file": "Jobs/ServerJiang.php",
+            "line": 70,
+            "sink_type": "LFI",
+            "function": "file_get_contents",
+            "call_type": "func_call",
+            "args": [
+                "<concat>",
+                "<expr>",
+                "$context"
+            ],
+            "arg_safety": [
+                "suspicious",
+                "needs_trace",
+                "needs_trace"
+            ],
+            "in_function": "ServerJiang::handle",
+            "in_class": "App\\Jobs\\ServerJiang",
+            "namespace": "App\\Jobs"
+        },
+        {
+            "file": "Jobs/ApiHook.php",
+            "line": 85,
+            "sink_type": "LFI",
+            "function": "file_get_contents",
+            "call_type": "func_call",
+            "args": [
+                "<expr>",
+                "<expr>",
+                "$context"
+            ],
+            "arg_safety": [
+                "needs_trace",
+                "needs_trace",
+                "needs_trace"
+            ],
+            "in_function": "ApiHook::handle",
+            "in_class": "App\\Jobs\\ApiHook",
+            "namespace": "App\\Jobs"
+        },
+        {
+            "file": "Helpers/functions.php",
+            "line": 106,
+            "sink_type": "RCE",
+            "function": "preg_replace",
+            "call_type": "func_call",
+            "args": [
+                "'/\t/'",
+                "''",
+                "$str"
+            ],
+            "arg_safety": [
+                "safe",
+                "safe",
+                "needs_trace"
+            ],
+            "in_function": "delete_html_code",
+            "in_class": null,
+            "namespace": null
+        },
+        {
+            "file": "Helpers/functions.php",
+            "line": 107,
+            "sink_type": "RCE",
+            "function": "preg_replace",
+            "call_type": "func_call",
+            "args": [
+                "'/\r\n/'",
+                "''",
+                "$str"
+            ],
+            "arg_safety": [
+                "safe",
+                "safe",
+                "needs_trace"
+            ],
+            "in_function": "delete_html_code",
+            "in_class": null,
+            "namespace": null
+        },
+        {
+            "file": "Helpers/functions.php",
+            "line": 108,
+            "sink_type": "RCE",
+            "function": "preg_replace",
+            "call_type": "func_call",
+            "args": [
+                "'/\r/'",
+                "''",
+                "$str"
+            ],
+            "arg_safety": [
+                "safe",
+                "safe",
+                "needs_trace"
+            ],
+            "in_function": "delete_html_code",
+            "in_class": null,
+            "namespace": null
+        },
+        {
+            "file": "Helpers/functions.php",
+            "line": 109,
+            "sink_type": "RCE",
+            "function": "preg_replace",
+            "call_type": "func_call",
+            "args": [
+                "'/\n/'",
+                "''",
+                "$str"
+            ],
+            "arg_safety": [
+                "safe",
+                "safe",
+                "needs_trace"
+            ],
+            "in_function": "delete_html_code",
+            "in_class": null,
+            "namespace": null
+        },
+        {
+            "file": "Helpers/functions.php",
+            "line": 110,
+            "sink_type": "RCE",
+            "function": "preg_replace",
+            "call_type": "func_call",
+            "args": [
+                "'/ /'",
+                "''",
+                "$str"
+            ],
+            "arg_safety": [
+                "safe",
+                "safe",
+                "needs_trace"
+            ],
+            "in_function": "delete_html_code",
+            "in_class": null,
+            "namespace": null
+        },
+        {
+            "file": "Helpers/functions.php",
+            "line": 111,
+            "sink_type": "RCE",
+            "function": "preg_replace",
+            "call_type": "func_call",
+            "args": [
+                "'/  /'",
+                "''",
+                "$str"
+            ],
+            "arg_safety": [
+                "safe",
+                "safe",
+                "needs_trace"
+            ],
+            "in_function": "delete_html_code",
+            "in_class": null,
+            "namespace": null
+        },
+        {
+            "file": "Helpers/functions.php",
+            "line": 195,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "md5_signquery",
+            "in_class": null,
+            "namespace": null
+        },
+        {
+            "file": "Service/Geetest/GeetestLib.php",
+            "line": 99,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "GeetestLib::successProcess",
+            "in_class": "App\\Service\\Geetest\\GeetestLib",
+            "namespace": "App\\Service\\Geetest"
+        },
+        {
+            "file": "Service/Geetest/GeetestLib.php",
+            "line": 173,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "$seccode"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "GeetestLib::successValidate",
+            "in_class": "App\\Service\\Geetest\\GeetestLib",
+            "namespace": "App\\Service\\Geetest"
+        },
+        {
+            "file": "Service/Geetest/GeetestLib.php",
+            "line": 190,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "$challenge"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "GeetestLib::failValidate",
+            "in_class": "App\\Service\\Geetest\\GeetestLib",
+            "namespace": "App\\Service\\Geetest"
+        },
+        {
+            "file": "Service/Geetest/GeetestLib.php",
+            "line": 208,
+            "sink_type": "Crypto",
+            "function": "md5",
+            "call_type": "func_call",
+            "args": [
+                "<concat>"
+            ],
+            "arg_safety": [
+                "suspicious"
+            ],
+            "in_function": "GeetestLib::checkValidate",
+            "in_class": "App\\Service\\Geetest\\GeetestLib",
+            "namespace": "App\\Service\\Geetest"
+        },
+        {
+            "file": "Service/Geetest/GeetestLib.php",
+            "line": 231,
+            "sink_type": "SSRF",
+            "function": "curl_exec",
+            "call_type": "func_call",
+            "args": [
+                "$ch"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "GeetestLib::sendRequest",
+            "in_class": "App\\Service\\Geetest\\GeetestLib",
+            "namespace": "App\\Service\\Geetest"
+        },
+        {
+            "file": "Service/Geetest/GeetestLib.php",
+            "line": 246,
+            "sink_type": "LFI",
+            "function": "file_get_contents",
+            "call_type": "func_call",
+            "args": [
+                "$url",
+                "<expr>",
+                "$context"
+            ],
+            "arg_safety": [
+                "needs_trace",
+                "needs_trace",
+                "needs_trace"
+            ],
+            "in_function": "GeetestLib::sendRequest",
+            "in_class": "App\\Service\\Geetest\\GeetestLib",
+            "namespace": "App\\Service\\Geetest"
+        },
+        {
+            "file": "Service/Geetest/GeetestLib.php",
+            "line": 279,
+            "sink_type": "SSRF",
+            "function": "curl_exec",
+            "call_type": "func_call",
+            "args": [
+                "$ch"
+            ],
+            "arg_safety": [
+                "needs_trace"
+            ],
+            "in_function": "GeetestLib::postRequest",
+            "in_class": "App\\Service\\Geetest\\GeetestLib",
+            "namespace": "App\\Service\\Geetest"
+        },
+        {
+            "file": "Service/Geetest/GeetestLib.php",
+            "line": 296,
+            "sink_type": "LFI",
+            "function": "file_get_contents",
+            "call_type": "func_call",
+            "args": [
+                "$url",
+                "<expr>",
+                "$context"
+            ],
+            "arg_safety": [
+                "needs_trace",
+                "needs_trace",
+                "needs_trace"
+            ],
+            "in_function": "GeetestLib::postRequest",
+            "in_class": "App\\Service\\Geetest\\GeetestLib",
+            "namespace": "App\\Service\\Geetest"
+        }
+    ]
+}
