@@ -179,6 +179,14 @@ class SecurityRegressionSourceTest extends TestCase
         ]);
     }
 
+    public function testOrderCookieCannotCrashAfterCommit(): void
+    {
+        $this->assertSourceContains('app/Http/Controllers/Home/OrderController.php', [
+            "if (! is_array(\$cookies)) {",
+            'Cookie::queue(\'dujiaoka_orders\', json_encode(array_values(array_unique($cookies))));',
+        ]);
+    }
+
     public function testCarmisImportDoesNotDeleteNullUploadPath(): void
     {
         $this->assertSourceContains('app/Admin/Forms/ImportCarmis.php', [

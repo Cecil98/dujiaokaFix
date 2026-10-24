@@ -102,9 +102,15 @@ class OrderController extends BaseController
         if (empty($cookies)) {
             Cookie::queue('dujiaoka_orders', json_encode([$orderSN]));
         } else {
+            // 旧 cookie 可能不是合法 JSON；json_decode() 会返回 null，
+            // PHP 8 下 array_push(null, ...) 会抛 TypeError，导致订单已
+            // 创建但响应 500。这里始终回退为数组。
             $cookies = json_decode($cookies, true);
-            array_push($cookies, $orderSN);
-            Cookie::queue('dujiaoka_orders', json_encode($cookies));
+            if (! is_array($cookies)) {
+                $cookies = [];
+            }
+            $cookies[] = $orderSN;
+            Cookie::queue('dujiaoka_orders', json_encode(array_values(array_unique($cookies))));
         }
     }
 

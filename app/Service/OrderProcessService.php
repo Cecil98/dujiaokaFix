@@ -301,6 +301,26 @@ class OrderProcessService
     }
 
     /**
+     * 将后台配置的订单过期分钟数归一化为正整数。
+     *
+     * 系统设置可能从旧 cache 恢复成字符串（"5"），Carbon 3 的
+     * addMinutes() 参数类型为 int|float，直接传 string 会抛 TypeError。
+     *
+     * @param mixed $value
+     * @return int
+     */
+    public static function normalizeExpiryMinutes(mixed $value): int
+    {
+        if (! is_numeric($value)) {
+            return 5;
+        }
+
+        $minutes = (int) $value;
+
+        return $minutes > 0 ? $minutes : 5;
+    }
+
+    /**
      * 创建订单.
      * @return Order
      * @throws RuleValidationException
@@ -362,8 +382,12 @@ class OrderProcessService
                     throw new RuleValidationException(__('dujiaoka.prompt.coupon_lack_of_available_opportunities'));
                 }
             }
-            // 将订单加入队列 x分钟后过期
-            $expiredOrderDate = dujiaoka_config_get('order_expire_time', 5);
+            // 将订单加入队列 x分钟后过期。后台设置恢复后可能是字符串
+            // （例如 "5"），Carbon 3 的 addMinutes() 会拒绝 string，必须在
+            // 这里归一化为正整数，否则 PHP 8 下会抛 TypeError 导致下单 500。
+            $expiredOrderDate = self::normalizeExpiryMinutes(
+                dujiaoka_config_get('order_expire_time', 5)
+            );
             OrderExpired::dispatch($order->order_sn)->delay(Carbon::now()->addMinutes($expiredOrderDate));
             return $order;
         } catch (\Exception $exception) {
