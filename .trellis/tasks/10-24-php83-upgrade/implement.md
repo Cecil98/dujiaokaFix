@@ -102,7 +102,7 @@ php artisan route:list | grep -E "pay/(yipay|alipay|wepay|paypal)"
 - [x] 构建并打 tag `2.1.0-php83`（本地镜像已验证 x86/arm64）
 - [ ] 预发部署 + 冒烟（本地已完成 E2E/CRUD/队列/导出）
 - [ ] 生产备份 + 灰度 + 观察
-- [x] 更新 README / `debian_manual.md`
+- [x] 更新 README / `debian_manual.md` / `docs/php83-upgrade-deployment.md`
 
 ## 风险文件（改动前先备份/复审）
 

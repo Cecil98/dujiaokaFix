@@ -33,3 +33,4 @@
 - Docker 首次安装需显式 `INSTALL=true`；安装完成后改成 `INSTALL=false`，容器会写 `install.lock`。
 - HTTPS 生产环境设置 `SESSION_SECURE_COOKIE=true`，并保留 `APP_DEBUG=false`。
 - 安全审计记录见 `docs/security-audit/php83-upgrade/审计报告.md`。
+- 旧库升级/部署手册见 [`docs/php83-upgrade-deployment.md`](docs/php83-upgrade-deployment.md)。
