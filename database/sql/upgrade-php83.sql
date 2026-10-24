@@ -70,3 +70,9 @@ UPDATE `pays` SET `is_open` = 1 WHERE `pay_handleroute` = '/pay/yipay';
 --    compatible with the old code (it only reads the value).
 ALTER TABLE `pays`
   MODIFY `merchant_id` TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT '商户 ID（加密后需要更长空间）';
+
+-- After deploying this script, run once to encrypt legacy plaintext payment
+-- credentials with the application's APP_KEY:
+--   php artisan pay:encrypt-secrets
+-- Before rolling back to old code, decrypt them:
+--   php artisan pay:decrypt-secrets
