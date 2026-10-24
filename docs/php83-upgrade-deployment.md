@@ -262,6 +262,10 @@ grep '^APP_KEY=' .env
 # 2) 生成新 APP_KEY；会让现有会话失效
 docker compose exec -T web php artisan key:generate --force
 
+# 如果 .env 是只读挂载、容器内用户不可写：
+#   docker compose exec -T web php artisan key:generate --show
+# 把输出手工写入宿主机 .env 的 APP_KEY= 行，再继续。
+
 # 3) 用新 APP_KEY 加密旧明文支付密钥
 docker compose exec -T web php artisan pay:encrypt-secrets
 
