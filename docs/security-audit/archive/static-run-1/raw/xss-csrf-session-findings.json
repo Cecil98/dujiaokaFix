@@ -1,0 +1,167 @@
+{
+  "artifact": "xss-csrf-session-findings",
+  "audit_kind": "phase4-domain-audit-xss-csrf-session",
+  "mode": "static",
+  "target": ".",
+  "domain": "xss-csrf-session",
+  "branch": "upgrade/php83",
+  "generated_by": "php-audit-auditor (xss-csrf-session domain, static source-to-sink)",
+  "method": "Read the assigned ITEM (PQ-08), the upstream shared guidance and team4 session/csrf auditor skills, then traced every claim to the current working tree (config, middleware, controllers, vendor framework code). MODE=static: no HTTP request, payload, container action or data change was performed. No .env value was printed; only key presence and file:line references are reported.",
+  "guidance_consumed": [
+    "tools/php-audit-skills/shared/anti_hallucination.md",
+    "tools/php-audit-skills/shared/evidence_contract.md",
+    "tools/php-audit-skills/shared/sink_definitions.md (#21 CSRF sink, #22 Session/Cookie security sink)",
+    "tools/php-audit-skills/shared/php_specific_patterns.md",
+    "tools/php-audit-skills/shared/false_positive_patterns.md (FP-XSS-002 HttpOnly Cookie)",
+    "tools/php-audit-skills/shared/severity_rating.md",
+    "tools/php-audit-skills/teams/team4/session_auditor.md",
+    "tools/php-audit-skills/teams/team4/csrf_auditor.md",
+    "tools/php-audit-skills/skills/auditors/session_auditor_analyze.md",
+    "tools/php-audit-skills/skills/auditors/csrf_auditor_analyze.md"
+  ],
+  "items_audited": [
+    "PQ-08"
+  ],
+  "environment_notes": [
+    "Host has no php binary and MODE=static, so no runtime/HTTP probe was made; every statement below is anchored to source lines in the working tree or in vendor/.",
+    "Laravel framework actually installed: laravel/framework v12.70.1 (composer.lock), PHP requirement ^8.3 (composer.json).",
+    "The working-tree .env is untracked (git ls-files .env -> empty) and was NOT read for values. Key-presence only: SESSION_DRIVER and SESSION_LIFETIME are present; SESSION_SECURE_COOKIE / SESSION_SAME_SITE / SESSION_HTTP_ONLY / ADMIN_HTTPS are absent, so the config/session.php defaults apply to that instance.",
+    "Shipped image/php config: conf/php.ini sets only session.cookie_httponly=1 (conf/php.ini:8); defaults for use_only_cookies/use_strict_mode/use_trans_sid/serialize_handler are not overridden.",
+    "Docker compose publishes 80:80 only (docker-compose.yml:7) and conf/default.conf:2 has a single 'listen 80;' vhost - the default deployment is plain HTTP with no TLS listener."
+  ],
+  "findings": [
+    {
+      "id": "PQ-08-F1",
+      "item_id": "PQ-08",
+      "title": "Session cookie is issued without the Secure attribute by default (SESSION_SECURE_COOKIE=false / null), and Laravel never reaches Symfony's HTTPS auto-secure path",
+      "severity": "medium",
+      "severity_score": {
+        "reachability": 2,
+        "impact": 2,
+        "complexity": 1,
+        "score": 1.75,
+        "cvss": 5.8,
+        "level": "M",
+        "vuln_id": "M-SESSION-001"
+      },
+      "confidence": 0.8,
+      "verdict": "confirmed configuration gap (static); exploitation is conditional on a cleartext HTTP path or an attacker on-path position",
+      "file": "config/session.php",
+      "line": 169,
+      "sink_type": "session/cookie security - missing Secure cookie attribute (cleartext session transmission)",
+      "source": "Environment variable SESSION_SECURE_COOKIE: .env.example:69 ships SESSION_SECURE_COOKIE=false; config/session.php:169 'secure' => env('SESSION_SECURE_COOKIE', null) -> false or null. Deployment default is plain HTTP (.env.example:49 ADMIN_HTTPS=false, docker-compose.yml:7 '80:80', conf/default.conf:2 'listen 80;').",
+      "sink": "Illuminate\\Session\\Middleware\\StartSession::addCookieToResponse() builds the session cookie with $config['secure'] (vendor/laravel/framework/src/Illuminate/Session/Middleware/StartSession.php:221-235); Symfony\\Component\\HttpFoundation\\Cookie::__toString() only appends '; secure' when isSecure() is true (vendor/symfony/http-foundation/Cookie.php:302, isSecure() at :373-376 with $secureDefault=false at :29).",
+      "reachability": "Every request through the 'web' middleware group issues/refreshes the cookie (app/Http/Kernel.php:34-43, StartSession at :37); admin and storefront share the same session cookie and the same config. Reachable anonymously on any request; no authentication or admin rights are needed to receive the cookie.",
+      "preconditions": "1) The site is reachable over plain HTTP, or the victim opens an http:// URL of an HTTPS site before HSTS is cached (SecurityHeaders only emits Strict-Transport-Security when the current request is already secure, app/Http/Middleware/SecurityHeaders.php:20-22). 2) The attacker can observe the traffic (public Wi-Fi, proxy, ISP, ARP/DNS spoofing). 3) SESSION_SECURE_COOKIE was not manually set to true by the operator.",
+      "impact": "HttpOnly blocks JS theft, but the browser attaches the cookie to any http:// request to the host, so an on-path attacker can capture the session ID and take over the admin panel (single shared session cookie for storefront and admin guard config/admin.php:135-143) for the session lifetime (SESSION_LIFETIME=120 min by default, config/session.php:34, refreshed by activity).",
+      "evidence": [
+        "config/session.php:169  'secure' => env('SESSION_SECURE_COOKIE', null),",
+        ".env.example:68-69  '# 后台登录限流 / Cookie 安全（生产建议开启）' / 'SESSION_SECURE_COOKIE=false'  (git blame: introduced in 71777e0 'fix: harden installer, admin auth, sessions, and container runtime', whose message claims 'set secure production defaults in .env.example')",
+        "vendor/laravel/framework/src/Illuminate/Session/Middleware/StartSession.php:224-235  new Cookie($session->getName(), $session->getId(), $this->getCookieExpirationDate(), $config['path'], $config['domain'], $config['secure'], $config['http_only'] ?? true, false, $config['same_site'] ?? null, ...)",
+        "vendor/symfony/http-foundation/Cookie.php:29  private bool $secureDefault = false;  |  :373-376 isSecure() => $this->secure ?? $this->secureDefault  |  :300-303 if ($this->isSecure()) $str .= '; secure'",
+        "vendor/symfony/http-foundation/Response.php:301-303 is the ONLY writer of the HTTPS auto-secure default (if ($request->isSecure()) foreach cookies setSecureDefault(true)); public/index.php:58 calls $response->send() directly and Symfony\\Response::send() (:400-419) does not call prepare(), so that branch never executes under Laravel -> secure=null really means 'no Secure flag', even on HTTPS.",
+        "Mitigations present but insufficient for this sink: 'http_only' => env('SESSION_HTTP_ONLY', true) (config/session.php:182) and 'same_site' => env('SESSION_SAME_SITE','lax') (:197) stop JS theft and most CSRF, they do NOT stop cleartext transmission."
+      ],
+      "false_positive_analysis": "Rejected the strongest refutation first: Symfony 7 normally auto-marks cookies secure when the request is HTTPS (Response.php:301-303), which would make secure=null harmless on TLS deployments. That path is dead here because Laravel's public/index.php:58 calls $response->send() without $response->prepare($request). Second, if the deployment really is HTTP-only no cookie flag can fix confidentiality, which bounds severity: shipped docs already require SESSION_SECURE_COOKIE=true for HTTPS (docs/php83-upgrade-deployment.md:229,472; README.md:34). It remains a finding because .env.example hardcodes false, so an operator who terminates TLS without editing .env gets no Secure flag and exposes the cookie on any http:// hit (typed URL, old link, mixed content) before HSTS is cached.",
+      "remediation": "1) Make it secure by default: config/session.php 'secure' => env('SESSION_SECURE_COOKIE', true) and drop 'SESSION_SECURE_COOKIE=false' from .env.example (document the plain-HTTP exception instead of shipping it as the default). 2) Terminate/redirect HTTP at the edge: conf/default.conf currently only has 'listen 80;', add a 301 to HTTPS plus HSTS so the pre-HSTS window closes. 3) Keep the SecurityHeaders HSTS branch and document TRUSTED_PROXIES when TLS ends at a proxy, otherwise $request->isSecure() is false. 4) Add a regression test asserting the Set-Cookie header contains 'secure' for a secure request."
+    },
+    {
+      "id": "PQ-08-F2",
+      "item_id": "PQ-08",
+      "title": "Admin password rotation does not revoke other sessions or remember-me tokens (AuthenticateSession commented out, 'remember' enabled, no logoutOtherDevices/cycleRememberToken in the password-change path)",
+      "severity": "medium",
+      "severity_score": {
+        "reachability": 1,
+        "impact": 2,
+        "complexity": 2,
+        "score": 1.6,
+        "cvss": 5.3,
+        "level": "M",
+        "vuln_id": "M-SESSION-002"
+      },
+      "confidence": 0.75,
+      "verdict": "confirmed code gap (static); impact conditional on an attacker already holding a session or remember cookie",
+      "file": "app/Http/Kernel.php",
+      "line": 38,
+      "sink_type": "session/cookie security - credential rotation does not invalidate existing sessions (session/remember-token persistence)",
+      "source": "Admin credential change: POST {ADMIN_ROUTE_PREFIX}/auth/setting -> app/Admin/Controllers/AuthController::putSetting() (app/Admin/Controllers/AuthController.php:46-76) -> Dcat\\Admin\\Http\\Controllers\\AuthController::putSetting() (vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php:119-128) -> settingForm() saving hook hashes the new password (:192-200). No other action is taken.",
+      "sink": "Session validity is decided only by the session store. The middleware that would compare the stored password hash with the current password (Illuminate\\Session\\Middleware\\AuthenticateSession) is commented out in the 'web' group (app/Http/Kernel.php:38) and is never registered anywhere else (grep 'AuthenticateSession' -> Kernel.php:38 and the inert priority list at :87 only). Remember-me is enabled (config/admin.php:152 'remember' => true) and the recaller cookie's password-hash component is only revalidated by that same middleware (vendor/laravel/framework/src/Illuminate/Session/Middleware/AuthenticateSession.php:53-58).",
+      "reachability": "No new request is needed: every already-issued admin session keeps passing Dcat\\Admin\\Http\\Middleware\\Authenticate ('Admin::guard()->guest()', vendor/dcat/laravel-admin/src/Http/Middleware/Authenticate.php:20-29) after the password is rotated, and every previously issued remember_admin_* cookie keeps auto-logging in (SessionGuard::userFromRecaller, vendor/laravel/framework/src/Illuminate/Auth/SessionGuard.php:196-241). Precondition: the attacker already holds a session ID or recaller value (e.g. via PQ-08-F1, a shared admin workstation, or a session-store backup).",
+      "preconditions": "1) The attacker obtained a valid admin session or remember cookie before the password change. 2) The legitimate admin rotates the password via the admin setting page (or another admin edits the account). 3) The request is served by the same session driver/storage (no manual flush of storage/framework/sessions or the admin remember_token column).",
+      "impact": "Credential rotation - the standard incident-response action after a suspected compromise - does not evict the intruder: existing admin sessions stay authenticated until idle timeout (SESSION_LIFETIME=120 min, config/session.php:34, refreshed on activity) and remember-me cookies remain usable for the recaller lifetime (576000 minutes, vendor/laravel/framework/src/Illuminate/Auth/SessionGuard.php:62). Persistent full admin control (goods/pay/orders/carmis/system settings).",
+      "evidence": [
+        "app/Http/Kernel.php:38  // \\Illuminate\\Session\\Middleware\\AuthenticateSession::class,   (git blame: present since the original import 0695f5c and never re-enabled; :87 lists it only in $middlewarePriority, which does not activate middleware)",
+        "vendor/laravel/framework/src/Illuminate/Auth/SessionGuard.php:571-575  login() stores 'password_hash_'.guard => hash(...) in the session, and AuthenticateSession.php:53-72 is the only code that ever compares it - with the middleware disabled the value is written but never checked.",
+        "app/Admin/Controllers/AuthController.php:46-76  putSetting() only validates length/blacklist and forgets the 'force_admin_password_change' session flag; no guard()->logoutOtherDevices(), no cycleRememberToken(), no invalidation of other sessions.",
+        "config/admin.php:152  'remember' => true,  + config/admin.php:135  'guard' => 'admin',  provider :137-143 (driver session) -> remember_admin_* recaller queued at SessionGuard.php:580-584 / 626-632.",
+        "Nuance that would break a naive fix: AuthenticateSession keys off the DEFAULT guard (AuthenticateSession.php:60-68 use $this->auth->getDefaultDriver() and $request->user()), while config/auth.php:17 sets defaults.guard='web' and the admin panel uses Auth::guard('admin') (vendor/dcat/laravel-admin/src/Admin.php:151-154, config/admin.php:135). Merely uncommenting Kernel.php:38 would therefore NOT protect admin sessions."
+      ],
+      "false_positive_analysis": "Refutations considered: (a) 'logout destroys the session' - true, but the issue is rotation without logout (vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php:82-84 invalidates only the current session); (b) 'Laravel stores password_hash_ so sessions self-invalidate' - it stores it (SessionGuard.php:571-575) but nothing verifies it while AuthenticateSession is disabled, and the admin guard is not the default guard anyway; (c) 'remember-me is disabled' - config/admin.php:152 enables it and the login view renders the checkbox (vendor/dcat/laravel-admin/resources/views/pages/login.blade.php:94-103); (d) severity degrades if the operator never enables 'remember' and flushes sessions out of band, which is not the shipped default. Confirmed as a code/config gap, conditionally exploitable.",
+      "remediation": "1) In app/Admin/Controllers/AuthController::putSetting(), after a successful password write call Auth::guard('admin')->logoutOtherDevices($oldPassword) and regenerate the current session id (this still needs the comparison path below). 2) Enable invalidation for the admin guard: register Illuminate\\Session\\Middleware\\AuthenticateSession in config/admin.php:74's middleware list together with Auth::shouldUse('admin'), or add a small middleware that compares session('password_hash_admin') with the current hash for Admin::guard(). 3) Prefer a 'session_version' column bumped on password/role change and checked in the admin Authenticate middleware so it does not depend on the default guard. 4) Add a feature test: log in twice, change the password in session A, assert session B is logged out and the old remember cookie is rejected."
+    },
+    {
+      "id": "PQ-08-F3",
+      "item_id": "PQ-08",
+      "title": "Server-side session payload is stored unencrypted ('encrypt' => false) with the file driver",
+      "severity": "low",
+      "severity_score": {
+        "reachability": 1,
+        "impact": 1,
+        "complexity": 1,
+        "score": 1.0,
+        "cvss": 3.3,
+        "level": "L",
+        "vuln_id": "L-SESSION-001"
+      },
+      "confidence": 0.55,
+      "verdict": "confirmed configuration fact / defense-in-depth gap; no HTTP-reachable sink without a secondary file-read or backup exposure",
+      "file": "config/session.php",
+      "line": 49,
+      "sink_type": "session/cookie security - plaintext session data at rest",
+      "source": "config/session.php:49 'encrypt' => false (hardcoded, not env-driven); driver default 'file' (config/session.php:21) with files path storage_path('framework/sessions') (:62).",
+      "sink": "Illuminate\\Session\\Store serializes the attribute bag to the file handler; with 'encrypt' => false the payload (auth IDs, password_hash_* values, and the admin workflow flags written by app/Http/Middleware/ForceAdminPasswordChange.php:32-38 and app/Admin/Controllers/AuthController.php:33-36) is written as plaintext serialized data.",
+      "reachability": "Not reachable from HTTP by itself. Requires a separate primitive: arbitrary file read, traversal/LFI, a world-readable storage mount, an exposed backup image, a neighbouring container on a shared volume, or disclosure of storage/framework/sessions in a support bundle.",
+      "preconditions": "The attacker can already read files under storage/framework/sessions (or a copy of them).",
+      "impact": "Disclosure of authenticated session contents (user IDs, the hashed-password value used by the session-hash mechanism, admin workflow flags) without needing the cookie. It does not by itself hand over a usable session unless the attacker also knows the file name, which is the session ID.",
+      "evidence": [
+        "config/session.php:49  'encrypt' => false,",
+        "config/session.php:21  'driver' => env('SESSION_DRIVER', 'file'),  |  :62 'files' => storage_path('framework/sessions'),",
+        "docs/php8.2-upgrade-plan.md:727 already lists this trio ('secure=false、same_site=null、encrypt=false') as a production hardening item."
+      ],
+      "false_positive_analysis": "Rejected as a standalone vulnerability: no source->sink path from an HTTP parameter to these files exists in the audited tree, and the cookie carries only the opaque session ID, so encrypt=false exposes nothing to the client. Kept as low defense-in-depth because it raises the value of any future file-read/backup leak while auth-adjacent flags are deliberately stored in the session. Session serialization handler was also checked (no session.serialize_handler override in conf/php.ini, no 'cookie' session driver, no session_encode/session_decode use in app/), so no session-deserialization finding exists.",
+      "remediation": "Set 'encrypt' => env('SESSION_ENCRYPT', true) in config/session.php (Laravel supports encrypted file/database/redis session stores), keep storage/framework/sessions off any web-served or shared mount, and keep the Docker volume owner-only."
+    }
+  ],
+  "rejected": [
+    {
+      "id": "PQ-08-R1",
+      "title": "Session fixation at admin login (pre-set session ID accepted after authentication)",
+      "reason": "Refuted by code: Dcat\\Admin\\Http\\Controllers\\AuthController::sendLoginResponse() calls $request->session()->regenerate() (vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php:239) and SessionGuard::updateSession() migrates the id as well (vendor/laravel/framework/src/Illuminate/Auth/SessionGuard.php:569,600-618). No session_id()/Session::setId() call exists in app/ (grep: no match)."
+    },
+    {
+      "id": "PQ-08-R2",
+      "title": "Logout leaves the session usable",
+      "reason": "Refuted by code: getLogout() runs guard()->logout() then $request->session()->invalidate() (vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php:80-91), destroying server-side data and regenerating the token; the recaller token is cycled when a remember cookie was used (SessionGuard.php:667-674)."
+    },
+    {
+      "id": "PQ-08-R3",
+      "title": "State-changing admin/storefront endpoints lack CSRF protection",
+      "reason": "Refuted by code: App\\Http\\Middleware\\VerifyCsrfToken is in the 'web' group (app/Http/Kernel.php:40) and admin routes use that group via config/admin.php:74 ['web','admin','admin.force-password'] (route registration app/Admin/routes.php:9-25). The exemption list is narrow and commented: only 'pay/*/notify_url' and 'pay/*/return_url' (app/Http/Middleware/VerifyCsrfToken.php:21-26), so payment initiation stays protected. SameSite=lax (config/session.php:197) is an extra layer. No CSRF finding raised."
+    },
+    {
+      "id": "PQ-08-R4",
+      "title": "Cookie missing HttpOnly / SameSite (JS-readable cookie, CSRF via SameSite=None)",
+      "reason": "Refuted by code: 'http_only' => env('SESSION_HTTP_ONLY', true) (config/session.php:182) is passed to the Cookie constructor (StartSession.php:231); 'same_site' => env('SESSION_SAME_SITE','lax') (config/session.php:197, .env.example:70). conf/php.ini:8 additionally sets session.cookie_httponly=1. Per shared/false_positive_patterns.md FP-XSS-002 this does not neutralise XSS, it only blocks cookie theft - but there is no missing-HttpOnly finding here."
+    },
+    {
+      "id": "PQ-08-R5",
+      "title": "Session ID leakage via URL / lax PHP session settings in conf/php.ini",
+      "reason": "Refuted: conf/php.ini contains only date.timezone, memory_limit, upload_max_filesize, post_max_size, max_execution_time, cgi.fix_pathinfo, expose_php=Off and session.cookie_httponly=1 (conf/php.ini:1-8); session.use_trans_sid, session.use_only_cookies, session.use_strict_mode and session.serialize_handler are not overridden, so PHP 8.3 defaults apply (use_only_cookies=1, use_strict_mode=1, use_trans_sid=0). No ini_set('session.*') in app/ (grep: no match)."
+    },
+    {
+      "id": "PQ-08-R6",
+      "title": "Remember-me cookie readable by JavaScript (XSS -> long-lived admin takeover)",
+      "reason": "Refuted: App\\Http\\Middleware\\EncryptCookies has an empty $except list (app/Http/Middleware/EncryptCookies.php:14-16) and is the first middleware of the 'web' group (app/Http/Kernel.php:35), so the recaller cookie is encrypted and MAC-signed with APP_KEY and is not plaintext in document.cookie; the session cookie itself is HttpOnly. The residual risk from that cookie is lifetime/revocation, covered by PQ-08-F2."
+    }
+  ]
+}

@@ -1,0 +1,1311 @@
+{
+ "artifact": "sinks",
+ "recon_kind": "sinks",
+ "phase": "P1-recon",
+ "target": ".",
+ "scan_scope": "app (primary, as instructed) + supplemental scan of repository root for non-app source dirs",
+ "mode": "static",
+ "generated_by": "php-audit-recon/sinks (pi)",
+ "guidance_consumed": [
+  "tools/php-audit-skills/shared/anti_hallucination.md",
+  "tools/php-audit-skills/shared/data_contracts.md",
+  "tools/php-audit-skills/shared/evidence_contract.md",
+  "tools/php-audit-skills/shared/sink_definitions.md",
+  "tools/php-audit-skills/shared/php_specific_patterns.md",
+  "tools/php-audit-skills/shared/framework_patterns.md",
+  "tools/php-audit-skills/teams/team2/context_extractor.md",
+  "tools/php-audit-skills/teams/team2/risk_classifier.md"
+ ],
+ "host_runtime": {
+  "host_php": "unavailable (`php: command not found`; no composer binary on host)",
+  "runtime_used": "docker webdevops/php:8.3 (PHP 8.3.36), repository mounted read-only at /app",
+  "tool": "tools/php-audit-skills/tools/sink_finder.php (nikic/php-parser v5.9.0 from vendor/)",
+  "commands": [
+   "docker run --rm -v \"$PWD\":/app:ro -w /app webdevops/php:8.3 php tools/php-audit-skills/tools/sink_finder.php app",
+   "docker run --rm -v \"$PWD\":/app:ro -w /app webdevops/php:8.3 php tools/php-audit-skills/tools/sink_finder.php ."
+  ],
+  "secrets_policy": "No .env values, APP_KEY, credentials, cookies or API keys are reproduced. Only key names and non-secret code literals are quoted."
+ },
+ "tool_run": {
+  "target": "app",
+  "scan_time_utc": "2026-10-24T06:26:05+00:00",
+  "total_files": 107,
+  "parse_errors": 0,
+  "error_files": [],
+  "total_sinks": 48,
+  "raw_sink_list_sha256": "746031455c8a50545ba793c49702e4a6f409f2f086cdcad79d0eecb30d1537e7",
+  "determinism_note": "Sink rows are sorted by (file, line, function). scan_time_utc is the tool's own timestamp; no other volatile values are embedded."
+ },
+ "summary": {
+  "application_scope_total_sinks": 48,
+  "by_sink_type": {
+   "Crypto": 14,
+   "FileWrite": 2,
+   "LFI": 7,
+   "RCE": 16,
+   "SQLi": 5,
+   "SSRF": 3,
+   "XXE": 1
+  },
+  "by_arg_safety": {
+   "needs_trace": 28,
+   "safe": 6,
+   "suspicious": 14
+  },
+  "by_sink_type_and_safety": {
+   "Crypto": {
+    "suspicious": 12,
+    "needs_trace": 2
+   },
+   "FileWrite": {
+    "needs_trace": 2
+   },
+   "LFI": {
+    "needs_trace": 5,
+    "safe": 1,
+    "suspicious": 1
+   },
+   "RCE": {
+    "needs_trace": 16
+   },
+   "SQLi": {
+    "safe": 5
+   },
+   "SSRF": {
+    "needs_trace": 3
+   },
+   "XXE": {
+    "suspicious": 1
+   }
+  },
+  "high_risk_flagged_for_triage": 6,
+  "likely_false_positives_documented": 5,
+  "reachability": "NOT EVALUATED — this artifact is static recon only; triage/audit phase decides exploitation."
+ },
+ "highest_risk_sinks": [
+  {
+   "id": "sink_home_doinstall_env_write",
+   "sink_type": "FileWrite",
+   "risk_band": "high",
+   "file": "app/Http/Controllers/Home/HomeController.php",
+   "line": 202,
+   "function": "file_put_contents",
+   "arg_safety": [
+    "needs_trace",
+    "needs_trace",
+    "needs_trace"
+   ],
+   "destination": "$envPath = base_path() . '/.env' (fixed, not user-controlled) — app/Http/Controllers/Home/HomeController.php:185",
+   "content_source": "$envTemp = file_get_contents(base_path().'/.env.example') (HomeController.php:188) with every request key substituted into '{key}' placeholders (HomeController.php:194-200)",
+   "evidence": "HomeController.php:194-202 `foreach ($postData as $key => $item) { if (is_string($item)) { $item = str_replace(['\\\\','\"','$'], ['\\\\\\\\','\\\\\"','\\\\$'], $item); } $envTemp = str_replace('{' . $key . '}', $item, $envTemp); }` then `file_put_contents($envPath, $envTemp, LOCK_EX);`",
+   "why_high_risk": "User-influenced content is written to the application .env (config poisoning / install-time secret generation). Path itself is fixed, so this is NOT arbitrary file write; whether the installer is reachable after install.lock exists is deferred to triage (routes/common/web.php:37-41 groups do-install under install.check; app/Http/Middleware/InstallCheck.php:20-24 redirects when install.lock exists).",
+   "notes": "Values are escaped for backslash/double-quote/$ at HomeController.php:195-198 and CR/LF is rejected for a fixed field allowlist at HomeController.php:138-143 — audit must confirm whether that allowlist covers every placeholder that .env.example exposes (observed placeholders: APP_NAME, app_key, app_url, admin_path, db_*, redis_*, title)."
+  },
+  {
+   "id": "sink_home_doinstall_sql_import",
+   "sink_type": "LFI",
+   "risk_band": "high",
+   "file": "app/Http/Controllers/Home/HomeController.php",
+   "line": 204,
+   "function": "file_get_contents",
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "destination": "$installSql = database_path().'/sql/install.sql' (fixed) — HomeController.php:187",
+   "evidence": "HomeController.php:204 `DB::unprepared(file_get_contents($installSql));`",
+   "why_high_risk": "Sink finder tags only the file read; the same line executes the file content as raw SQL via DB::unprepared, which is a SQL-execution sink missing from the tool's definitions (see coverage_gaps). Path is fixed, so the read is not traversable from this call site.",
+   "notes": "FileWrite of install.lock at HomeController.php:216 is a third sink in the same flow; content is the literal 'install ok', destination fixed (HomeController.php:186)."
+  },
+  {
+   "id": "sink_apihook_outbound_url",
+   "sink_type": "SSRF",
+   "risk_band": "medium",
+   "file": "app/Jobs/ApiHook.php",
+   "line": 85,
+   "function": "file_get_contents",
+   "arg_safety": [
+    "needs_trace",
+    "needs_trace",
+    "needs_trace"
+   ],
+   "evidence": "app/Jobs/ApiHook.php:85 `file_get_contents($goodInfo->api_hook, false, $context);` with POST body assembled from order data at ApiHook.php:65-80",
+   "why_high_risk": "Destination URL comes from per-goods metadata (`api_hook`, guarded non-empty at ApiHook.php:62-64), not from a hardcoded endpoint. Whether the value is attacker-controlled depends on who can write goods records — deferred to triage. Order PII (email, order_sn, price) is sent to that URL.",
+   "notes": "No scheme/host allowlist or internal-IP blocking is present in this function."
+  },
+  {
+   "id": "sink_serverjiang_outbound_url",
+   "sink_type": "LFI",
+   "risk_band": "low",
+   "file": "app/Jobs/ServerJiang.php",
+   "line": 70,
+   "function": "file_get_contents",
+   "arg_safety": [
+    "suspicious",
+    "needs_trace",
+    "needs_trace"
+   ],
+   "evidence": "app/Jobs/ServerJiang.php:69-70 `$apiToken = dujiaoka_config_get('server_jiang_token'); file_get_contents('https://sctapi.ftqq.com/' . $apiToken . '.send', false, $context);`",
+   "why_high_risk": "Host is hardcoded (sctapi.ftqq.com); only the path segment is config-derived, so SSRF-to-internal is not reachable here. Tagged for audit only because the finder treats all file_get_contents as LFI.",
+   "notes": "Order fields are sent off-site (third-party push provider) — data-egress consideration, not a sink exploit."
+  },
+  {
+   "id": "sink_md5_payment_signature",
+   "sink_type": "Crypto",
+   "risk_band": "medium",
+   "files": [
+    "app/Http/Controllers/Pay/YipayController.php:41",
+    "app/Http/Controllers/Pay/YipayController.php:94",
+    "app/Http/Controllers/Pay/EpusdtController.php:67",
+    "app/Http/Controllers/Pay/PaysapiController.php:39",
+    "app/Http/Controllers/Pay/PaysapiController.php:101",
+    "app/Http/Controllers/Pay/VpayController.php:43",
+    "app/Http/Controllers/Pay/VpayController.php:79",
+    "app/Http/Controllers/Pay/TokenPayController.php:67",
+    "app/Http/Controllers/Pay/MapayController.php:75",
+    "app/Helpers/functions.php:195",
+    "app/Service/Geetest/GeetestLib.php:99",
+    "app/Service/Geetest/GeetestLib.php:208"
+   ],
+   "evidence": "app/Http/Controllers/Pay/YipayController.php:38-44 `$sign .= \"$key=$val\"; ... $sign = md5($sign . $this->payGateway->merchant_pem);` / app/Helpers/functions.php:195 `$sign = md5($sign . $signKey);`",
+   "why_high_risk": "MD5 is used to authenticate payment callbacks/notifies (signature verification), i.e. a security context, not a cache key. Per anti_hallucination.md Rule 14 this is only a finding if the protocol/key handling is actually exploitable; classification is deferred.",
+   "notes": "String-concatenation signing without length-prefixing is the more interesting part for triage (parameter-boundary ambiguity), alongside MD5 weakness."
+  },
+  {
+   "id": "sink_geetest_cleartext_api",
+   "sink_type": "SSRF",
+   "risk_band": "low",
+   "files": [
+    "app/Service/Geetest/GeetestLib.php:231",
+    "app/Service/Geetest/GeetestLib.php:246",
+    "app/Service/Geetest/GeetestLib.php:279",
+    "app/Service/Geetest/GeetestLib.php:296"
+   ],
+   "evidence": "GeetestLib.php:83 `$url = \"http://api.geetest.com/register.php?\" . $query;`, GeetestLib.php:167 `$url = \"http://api.geetest.com/validate.php\";`, consumed at GeetestLib.php:231/246/279/296",
+   "why_high_risk": "Both endpoints are hardcoded, therefore not user-controlled SSRF (the finder flags the variable `$url` argument as needs_trace). Residual issue for triage: captcha register/validate traffic uses cleartext http:// including the captcha challenge/seccode.",
+   "notes": "CoinbaseController.php:58 curl_exec uses the hardcoded `https://api.commerce.coinbase.com/charges` url (CoinbaseController.php:21)."
+  }
+ ],
+ "likely_false_positives": [
+  {
+   "id": "fp_middleware_next_call",
+   "sink_type": "RCE",
+   "count": 9,
+   "files": [
+    "app/Http/Middleware/SecurityHeaders.php:13",
+    "app/Http/Middleware/ForceAdminPasswordChange.php:17",
+    "app/Http/Middleware/ForceAdminPasswordChange.php:29",
+    "app/Http/Middleware/ForceAdminPasswordChange.php:47",
+    "app/Http/Middleware/DujiaoSystem.php:29",
+    "app/Http/Middleware/PayGateWay.php:19",
+    "app/Http/Middleware/InstallCheck.php:23",
+    "app/Http/Middleware/RedirectIfAuthenticated.php:25",
+    "app/Http/Middleware/DujiaoBoot.php:54"
+   ],
+   "evidence": "app/Http/Middleware/SecurityHeaders.php:11-15 `public function handle(Request $request, Closure $next): Response { $response = $next($request); ... }`",
+   "rationale": "The finder flags every `$var(...)` dynamic call as RCE (sink_finder.php:284-287). These nine are Laravel middleware pipeline invocations of the typed `Closure $next` parameter — not attacker-influenced callables."
+  },
+  {
+   "id": "fp_console_kernel_load",
+   "sink_type": "XXE",
+   "file": "app/Console/Kernel.php:38",
+   "evidence": "app/Console/Kernel.php:38 `$this->load(__DIR__.'/Commands');`",
+   "rationale": "The method-level `load` sink is intended for DOMDocument::load (XXE). Here it is the Laravel command loader with a compile-time constant argument."
+  },
+  {
+   "id": "fp_preg_replace_without_e",
+   "sink_type": "RCE",
+   "file": "app/Helpers/functions.php:106-111",
+   "evidence": "app/Helpers/functions.php:106-111 `preg_replace(\"/\\t/\", \"\", $str)` ... six calls, pattern and replacement are literals; no /e modifier",
+   "rationale": "The /e modifier was removed in PHP 7 and the project targets PHP 8.3; user data only reaches the subject argument."
+  },
+  {
+   "id": "fp_trustproxies_array_map",
+   "sink_type": "RCE",
+   "file": "app/Http/Middleware/TrustProxies.php:33",
+   "evidence": "app/Http/Middleware/TrustProxies.php:31-34 `if (is_string($proxies) ...) { $this->proxies = $proxies === '*' ? '*' : array_map('trim', explode(',', $proxies)); }`",
+   "rationale": "Callback is the literal string 'trim'; only array data derives from config('app.trusted_proxies')."
+  },
+  {
+   "id": "fp_db_raw_charts",
+   "sink_type": "SQLi",
+   "files": [
+    "app/Admin/Charts/SuccessOrderCard.php:67",
+    "app/Admin/Charts/DashBoard.php:69",
+    "app/Admin/Charts/SalesCard.php:79"
+   ],
+   "evidence": "app/Admin/Charts/DashBoard.php:69 `DB::raw('count(id) as num')` — 5 flagged arg occurrences, all string literals, arg_safety=safe",
+   "rationale": "Constant SQL fragments; no interpolation in the flagged args."
+  }
+ ],
+ "sinks": [
+  {
+   "file": "app/Admin/Charts/DashBoard.php",
+   "line": 69,
+   "sink_type": "SQLi",
+   "function": "DB::raw",
+   "call_type": "static_call",
+   "args": [
+    "'count(id) as num'"
+   ],
+   "arg_safety": [
+    "safe"
+   ],
+   "in_function": "DashBoard::handle",
+   "in_class": "App\\Admin\\Charts\\DashBoard",
+   "namespace": "App\\Admin\\Charts"
+  },
+  {
+   "file": "app/Admin/Charts/SalesCard.php",
+   "line": 79,
+   "sink_type": "SQLi",
+   "function": "DB::raw",
+   "call_type": "static_call",
+   "args": [
+    "'DATE(created_at) as date'"
+   ],
+   "arg_safety": [
+    "safe"
+   ],
+   "in_function": "SalesCard::handle",
+   "in_class": "App\\Admin\\Charts\\SalesCard",
+   "namespace": "App\\Admin\\Charts"
+  },
+  {
+   "file": "app/Admin/Charts/SalesCard.php",
+   "line": 79,
+   "sink_type": "SQLi",
+   "function": "DB::raw",
+   "call_type": "static_call",
+   "args": [
+    "'sum(actual_price) as actual_price'"
+   ],
+   "arg_safety": [
+    "safe"
+   ],
+   "in_function": "SalesCard::handle",
+   "in_class": "App\\Admin\\Charts\\SalesCard",
+   "namespace": "App\\Admin\\Charts"
+  },
+  {
+   "file": "app/Admin/Charts/SuccessOrderCard.php",
+   "line": 67,
+   "sink_type": "SQLi",
+   "function": "DB::raw",
+   "call_type": "static_call",
+   "args": [
+    "'DATE(created_at) as date'"
+   ],
+   "arg_safety": [
+    "safe"
+   ],
+   "in_function": "SuccessOrderCard::handle",
+   "in_class": "App\\Admin\\Charts\\SuccessOrderCard",
+   "namespace": "App\\Admin\\Charts"
+  },
+  {
+   "file": "app/Admin/Charts/SuccessOrderCard.php",
+   "line": 67,
+   "sink_type": "SQLi",
+   "function": "DB::raw",
+   "call_type": "static_call",
+   "args": [
+    "'count(id) as num'"
+   ],
+   "arg_safety": [
+    "safe"
+   ],
+   "in_function": "SuccessOrderCard::handle",
+   "in_class": "App\\Admin\\Charts\\SuccessOrderCard",
+   "namespace": "App\\Admin\\Charts"
+  },
+  {
+   "file": "app/Console/Kernel.php",
+   "line": 38,
+   "sink_type": "XXE",
+   "function": "->load()",
+   "call_type": "method_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "Kernel::commands",
+   "in_class": "App\\Console\\Kernel",
+   "namespace": "App\\Console"
+  },
+  {
+   "file": "app/Helpers/functions.php",
+   "line": 106,
+   "sink_type": "RCE",
+   "function": "preg_replace",
+   "call_type": "func_call",
+   "args": [
+    "'/\t/'",
+    "''",
+    "$str"
+   ],
+   "arg_safety": [
+    "safe",
+    "safe",
+    "needs_trace"
+   ],
+   "in_function": "delete_html_code",
+   "in_class": null,
+   "namespace": null
+  },
+  {
+   "file": "app/Helpers/functions.php",
+   "line": 107,
+   "sink_type": "RCE",
+   "function": "preg_replace",
+   "call_type": "func_call",
+   "args": [
+    "'/\r\n/'",
+    "''",
+    "$str"
+   ],
+   "arg_safety": [
+    "safe",
+    "safe",
+    "needs_trace"
+   ],
+   "in_function": "delete_html_code",
+   "in_class": null,
+   "namespace": null
+  },
+  {
+   "file": "app/Helpers/functions.php",
+   "line": 108,
+   "sink_type": "RCE",
+   "function": "preg_replace",
+   "call_type": "func_call",
+   "args": [
+    "'/\r/'",
+    "''",
+    "$str"
+   ],
+   "arg_safety": [
+    "safe",
+    "safe",
+    "needs_trace"
+   ],
+   "in_function": "delete_html_code",
+   "in_class": null,
+   "namespace": null
+  },
+  {
+   "file": "app/Helpers/functions.php",
+   "line": 109,
+   "sink_type": "RCE",
+   "function": "preg_replace",
+   "call_type": "func_call",
+   "args": [
+    "'/\n/'",
+    "''",
+    "$str"
+   ],
+   "arg_safety": [
+    "safe",
+    "safe",
+    "needs_trace"
+   ],
+   "in_function": "delete_html_code",
+   "in_class": null,
+   "namespace": null
+  },
+  {
+   "file": "app/Helpers/functions.php",
+   "line": 110,
+   "sink_type": "RCE",
+   "function": "preg_replace",
+   "call_type": "func_call",
+   "args": [
+    "'/ /'",
+    "''",
+    "$str"
+   ],
+   "arg_safety": [
+    "safe",
+    "safe",
+    "needs_trace"
+   ],
+   "in_function": "delete_html_code",
+   "in_class": null,
+   "namespace": null
+  },
+  {
+   "file": "app/Helpers/functions.php",
+   "line": 111,
+   "sink_type": "RCE",
+   "function": "preg_replace",
+   "call_type": "func_call",
+   "args": [
+    "'/  /'",
+    "''",
+    "$str"
+   ],
+   "arg_safety": [
+    "safe",
+    "safe",
+    "needs_trace"
+   ],
+   "in_function": "delete_html_code",
+   "in_class": null,
+   "namespace": null
+  },
+  {
+   "file": "app/Helpers/functions.php",
+   "line": 195,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "md5_signquery",
+   "in_class": null,
+   "namespace": null
+  },
+  {
+   "file": "app/Http/Controllers/Home/HomeController.php",
+   "line": 188,
+   "sink_type": "LFI",
+   "function": "file_get_contents",
+   "call_type": "func_call",
+   "args": [
+    "$envExamplePath"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "HomeController::doInstall",
+   "in_class": "App\\Http\\Controllers\\Home\\HomeController",
+   "namespace": "App\\Http\\Controllers\\Home"
+  },
+  {
+   "file": "app/Http/Controllers/Home/HomeController.php",
+   "line": 202,
+   "sink_type": "FileWrite",
+   "function": "file_put_contents",
+   "call_type": "func_call",
+   "args": [
+    "$envPath",
+    "$envTemp",
+    "<expr>"
+   ],
+   "arg_safety": [
+    "needs_trace",
+    "needs_trace",
+    "needs_trace"
+   ],
+   "in_function": "HomeController::doInstall",
+   "in_class": "App\\Http\\Controllers\\Home\\HomeController",
+   "namespace": "App\\Http\\Controllers\\Home"
+  },
+  {
+   "file": "app/Http/Controllers/Home/HomeController.php",
+   "line": 204,
+   "sink_type": "LFI",
+   "function": "file_get_contents",
+   "call_type": "func_call",
+   "args": [
+    "$installSql"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "HomeController::doInstall",
+   "in_class": "App\\Http\\Controllers\\Home\\HomeController",
+   "namespace": "App\\Http\\Controllers\\Home"
+  },
+  {
+   "file": "app/Http/Controllers/Home/HomeController.php",
+   "line": 216,
+   "sink_type": "FileWrite",
+   "function": "file_put_contents",
+   "call_type": "func_call",
+   "args": [
+    "$installLock",
+    "'install ok'",
+    "<expr>"
+   ],
+   "arg_safety": [
+    "needs_trace",
+    "safe",
+    "needs_trace"
+   ],
+   "in_function": "HomeController::doInstall",
+   "in_class": "App\\Http\\Controllers\\Home\\HomeController",
+   "namespace": "App\\Http\\Controllers\\Home"
+  },
+  {
+   "file": "app/Http/Controllers/Pay/CoinbaseController.php",
+   "line": 58,
+   "sink_type": "SSRF",
+   "function": "curl_exec",
+   "call_type": "func_call",
+   "args": [
+    "$ch"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "CoinbaseController::gateway",
+   "in_class": "App\\Http\\Controllers\\Pay\\CoinbaseController",
+   "namespace": "App\\Http\\Controllers\\Pay"
+  },
+  {
+   "file": "app/Http/Controllers/Pay/CoinbaseController.php",
+   "line": 83,
+   "sink_type": "LFI",
+   "function": "file_get_contents",
+   "call_type": "func_call",
+   "args": [
+    "'php://input'"
+   ],
+   "arg_safety": [
+    "safe"
+   ],
+   "in_function": "CoinbaseController::notifyUrl",
+   "in_class": "App\\Http\\Controllers\\Pay\\CoinbaseController",
+   "namespace": "App\\Http\\Controllers\\Pay"
+  },
+  {
+   "file": "app/Http/Controllers/Pay/EpusdtController.php",
+   "line": 67,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "EpusdtController::epusdtSign",
+   "in_class": "App\\Http\\Controllers\\Pay\\EpusdtController",
+   "namespace": "App\\Http\\Controllers\\Pay"
+  },
+  {
+   "file": "app/Http/Controllers/Pay/MapayController.php",
+   "line": 75,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "MapayController::notifyUrl",
+   "in_class": "App\\Http\\Controllers\\Pay\\MapayController",
+   "namespace": "App\\Http\\Controllers\\Pay"
+  },
+  {
+   "file": "app/Http/Controllers/Pay/PaysapiController.php",
+   "line": 39,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "PaysapiController::gateway",
+   "in_class": "App\\Http\\Controllers\\Pay\\PaysapiController",
+   "namespace": "App\\Http\\Controllers\\Pay"
+  },
+  {
+   "file": "app/Http/Controllers/Pay/PaysapiController.php",
+   "line": 101,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "PaysapiController::notifyUrl",
+   "in_class": "App\\Http\\Controllers\\Pay\\PaysapiController",
+   "namespace": "App\\Http\\Controllers\\Pay"
+  },
+  {
+   "file": "app/Http/Controllers/Pay/TokenPayController.php",
+   "line": 67,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "TokenPayController::VerifySign",
+   "in_class": "App\\Http\\Controllers\\Pay\\TokenPayController",
+   "namespace": "App\\Http\\Controllers\\Pay"
+  },
+  {
+   "file": "app/Http/Controllers/Pay/VpayController.php",
+   "line": 43,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "VpayController::gateway",
+   "in_class": "App\\Http\\Controllers\\Pay\\VpayController",
+   "namespace": "App\\Http\\Controllers\\Pay"
+  },
+  {
+   "file": "app/Http/Controllers/Pay/VpayController.php",
+   "line": 79,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "VpayController::notifyUrl",
+   "in_class": "App\\Http\\Controllers\\Pay\\VpayController",
+   "namespace": "App\\Http\\Controllers\\Pay"
+  },
+  {
+   "file": "app/Http/Controllers/Pay/YipayController.php",
+   "line": 41,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "YipayController::gateway",
+   "in_class": "App\\Http\\Controllers\\Pay\\YipayController",
+   "namespace": "App\\Http\\Controllers\\Pay"
+  },
+  {
+   "file": "app/Http/Controllers/Pay/YipayController.php",
+   "line": 94,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "YipayController::notifyUrl",
+   "in_class": "App\\Http\\Controllers\\Pay\\YipayController",
+   "namespace": "App\\Http\\Controllers\\Pay"
+  },
+  {
+   "file": "app/Http/Middleware/DujiaoBoot.php",
+   "line": 54,
+   "sink_type": "RCE",
+   "function": "$next()",
+   "call_type": "dynamic_call",
+   "args": [
+    "$request"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "DujiaoBoot::handle",
+   "in_class": "App\\Http\\Middleware\\DujiaoBoot",
+   "namespace": "App\\Http\\Middleware"
+  },
+  {
+   "file": "app/Http/Middleware/DujiaoSystem.php",
+   "line": 29,
+   "sink_type": "RCE",
+   "function": "$next()",
+   "call_type": "dynamic_call",
+   "args": [
+    "$request"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "DujiaoSystem::handle",
+   "in_class": "App\\Http\\Middleware\\DujiaoSystem",
+   "namespace": "App\\Http\\Middleware"
+  },
+  {
+   "file": "app/Http/Middleware/ForceAdminPasswordChange.php",
+   "line": 17,
+   "sink_type": "RCE",
+   "function": "$next()",
+   "call_type": "dynamic_call",
+   "args": [
+    "$request"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "ForceAdminPasswordChange::handle",
+   "in_class": "App\\Http\\Middleware\\ForceAdminPasswordChange",
+   "namespace": "App\\Http\\Middleware"
+  },
+  {
+   "file": "app/Http/Middleware/ForceAdminPasswordChange.php",
+   "line": 29,
+   "sink_type": "RCE",
+   "function": "$next()",
+   "call_type": "dynamic_call",
+   "args": [
+    "$request"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "ForceAdminPasswordChange::handle",
+   "in_class": "App\\Http\\Middleware\\ForceAdminPasswordChange",
+   "namespace": "App\\Http\\Middleware"
+  },
+  {
+   "file": "app/Http/Middleware/ForceAdminPasswordChange.php",
+   "line": 47,
+   "sink_type": "RCE",
+   "function": "$next()",
+   "call_type": "dynamic_call",
+   "args": [
+    "$request"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "ForceAdminPasswordChange::handle",
+   "in_class": "App\\Http\\Middleware\\ForceAdminPasswordChange",
+   "namespace": "App\\Http\\Middleware"
+  },
+  {
+   "file": "app/Http/Middleware/InstallCheck.php",
+   "line": 23,
+   "sink_type": "RCE",
+   "function": "$next()",
+   "call_type": "dynamic_call",
+   "args": [
+    "$request"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "InstallCheck::handle",
+   "in_class": "App\\Http\\Middleware\\InstallCheck",
+   "namespace": "App\\Http\\Middleware"
+  },
+  {
+   "file": "app/Http/Middleware/PayGateWay.php",
+   "line": 19,
+   "sink_type": "RCE",
+   "function": "$next()",
+   "call_type": "dynamic_call",
+   "args": [
+    "$request"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "PayGateWay::handle",
+   "in_class": "App\\Http\\Middleware\\PayGateWay",
+   "namespace": "App\\Http\\Middleware"
+  },
+  {
+   "file": "app/Http/Middleware/RedirectIfAuthenticated.php",
+   "line": 25,
+   "sink_type": "RCE",
+   "function": "$next()",
+   "call_type": "dynamic_call",
+   "args": [
+    "$request"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "RedirectIfAuthenticated::handle",
+   "in_class": "App\\Http\\Middleware\\RedirectIfAuthenticated",
+   "namespace": "App\\Http\\Middleware"
+  },
+  {
+   "file": "app/Http/Middleware/SecurityHeaders.php",
+   "line": 13,
+   "sink_type": "RCE",
+   "function": "$next()",
+   "call_type": "dynamic_call",
+   "args": [
+    "$request"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "SecurityHeaders::handle",
+   "in_class": "App\\Http\\Middleware\\SecurityHeaders",
+   "namespace": "App\\Http\\Middleware"
+  },
+  {
+   "file": "app/Http/Middleware/TrustProxies.php",
+   "line": 33,
+   "sink_type": "RCE",
+   "function": "array_map",
+   "call_type": "func_call",
+   "args": [
+    "'trim'",
+    "<call>"
+   ],
+   "arg_safety": [
+    "safe",
+    "needs_trace"
+   ],
+   "in_function": "TrustProxies::__construct",
+   "in_class": "App\\Http\\Middleware\\TrustProxies",
+   "namespace": "App\\Http\\Middleware"
+  },
+  {
+   "file": "app/Jobs/ApiHook.php",
+   "line": 85,
+   "sink_type": "LFI",
+   "function": "file_get_contents",
+   "call_type": "func_call",
+   "args": [
+    "<expr>",
+    "<expr>",
+    "$context"
+   ],
+   "arg_safety": [
+    "needs_trace",
+    "needs_trace",
+    "needs_trace"
+   ],
+   "in_function": "ApiHook::handle",
+   "in_class": "App\\Jobs\\ApiHook",
+   "namespace": "App\\Jobs"
+  },
+  {
+   "file": "app/Jobs/ServerJiang.php",
+   "line": 70,
+   "sink_type": "LFI",
+   "function": "file_get_contents",
+   "call_type": "func_call",
+   "args": [
+    "<concat>",
+    "<expr>",
+    "$context"
+   ],
+   "arg_safety": [
+    "suspicious",
+    "needs_trace",
+    "needs_trace"
+   ],
+   "in_function": "ServerJiang::handle",
+   "in_class": "App\\Jobs\\ServerJiang",
+   "namespace": "App\\Jobs"
+  },
+  {
+   "file": "app/Service/Geetest/GeetestLib.php",
+   "line": 99,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "GeetestLib::successProcess",
+   "in_class": "App\\Service\\Geetest\\GeetestLib",
+   "namespace": "App\\Service\\Geetest"
+  },
+  {
+   "file": "app/Service/Geetest/GeetestLib.php",
+   "line": 173,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "$seccode"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "GeetestLib::successValidate",
+   "in_class": "App\\Service\\Geetest\\GeetestLib",
+   "namespace": "App\\Service\\Geetest"
+  },
+  {
+   "file": "app/Service/Geetest/GeetestLib.php",
+   "line": 190,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "$challenge"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "GeetestLib::failValidate",
+   "in_class": "App\\Service\\Geetest\\GeetestLib",
+   "namespace": "App\\Service\\Geetest"
+  },
+  {
+   "file": "app/Service/Geetest/GeetestLib.php",
+   "line": 208,
+   "sink_type": "Crypto",
+   "function": "md5",
+   "call_type": "func_call",
+   "args": [
+    "<concat>"
+   ],
+   "arg_safety": [
+    "suspicious"
+   ],
+   "in_function": "GeetestLib::checkValidate",
+   "in_class": "App\\Service\\Geetest\\GeetestLib",
+   "namespace": "App\\Service\\Geetest"
+  },
+  {
+   "file": "app/Service/Geetest/GeetestLib.php",
+   "line": 231,
+   "sink_type": "SSRF",
+   "function": "curl_exec",
+   "call_type": "func_call",
+   "args": [
+    "$ch"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "GeetestLib::sendRequest",
+   "in_class": "App\\Service\\Geetest\\GeetestLib",
+   "namespace": "App\\Service\\Geetest"
+  },
+  {
+   "file": "app/Service/Geetest/GeetestLib.php",
+   "line": 246,
+   "sink_type": "LFI",
+   "function": "file_get_contents",
+   "call_type": "func_call",
+   "args": [
+    "$url",
+    "<expr>",
+    "$context"
+   ],
+   "arg_safety": [
+    "needs_trace",
+    "needs_trace",
+    "needs_trace"
+   ],
+   "in_function": "GeetestLib::sendRequest",
+   "in_class": "App\\Service\\Geetest\\GeetestLib",
+   "namespace": "App\\Service\\Geetest"
+  },
+  {
+   "file": "app/Service/Geetest/GeetestLib.php",
+   "line": 279,
+   "sink_type": "SSRF",
+   "function": "curl_exec",
+   "call_type": "func_call",
+   "args": [
+    "$ch"
+   ],
+   "arg_safety": [
+    "needs_trace"
+   ],
+   "in_function": "GeetestLib::postRequest",
+   "in_class": "App\\Service\\Geetest\\GeetestLib",
+   "namespace": "App\\Service\\Geetest"
+  },
+  {
+   "file": "app/Service/Geetest/GeetestLib.php",
+   "line": 296,
+   "sink_type": "LFI",
+   "function": "file_get_contents",
+   "call_type": "func_call",
+   "args": [
+    "$url",
+    "<expr>",
+    "$context"
+   ],
+   "arg_safety": [
+    "needs_trace",
+    "needs_trace",
+    "needs_trace"
+   ],
+   "in_function": "GeetestLib::postRequest",
+   "in_class": "App\\Service\\Geetest\\GeetestLib",
+   "namespace": "App\\Service\\Geetest"
+  }
+ ],
+ "supplemental_non_app_sinks": {
+  "note": "Produced by the second command (root scan). tools/ entries are the audit toolkit itself (out of application scope). tests/, database/, public/, server.php are framework bootstrap/fixtures. Reachability not evaluated.",
+  "counts_by_top_level_dir": {
+   "config": 1,
+   "database": 6,
+   "public": 2,
+   "routes": 1,
+   "server.php": 1,
+   "tests": 1,
+   "tools": 45
+  },
+  "application_relevant": [
+   {
+    "file": "config/database.php",
+    "line": 61,
+    "sink_type": "RCE",
+    "function": "array_filter",
+    "call_type": "func_call",
+    "args": [
+     "<expr>"
+    ],
+    "arg_safety": [
+     "needs_trace"
+    ],
+    "in_function": null,
+    "in_class": null,
+    "namespace": null
+   },
+   {
+    "file": "database/factories/OrderFactory.php",
+    "line": 17,
+    "sink_type": "Crypto",
+    "function": "rand",
+    "call_type": "func_call",
+    "args": [
+     "1",
+     "3"
+    ],
+    "arg_safety": [
+     "safe",
+     "safe"
+    ],
+    "in_function": "OrderFactory::definition",
+    "in_class": "Database\\Factories\\OrderFactory",
+    "namespace": "Database\\Factories"
+   },
+   {
+    "file": "database/factories/OrderFactory.php",
+    "line": 18,
+    "sink_type": "Crypto",
+    "function": "rand",
+    "call_type": "func_call",
+    "args": [
+     "1",
+     "3"
+    ],
+    "arg_safety": [
+     "safe",
+     "safe"
+    ],
+    "in_function": "OrderFactory::definition",
+    "in_class": "Database\\Factories\\OrderFactory",
+    "namespace": "Database\\Factories"
+   },
+   {
+    "file": "database/factories/OrderFactory.php",
+    "line": 20,
+    "sink_type": "Crypto",
+    "function": "rand",
+    "call_type": "func_call",
+    "args": [
+     "1",
+     "2"
+    ],
+    "arg_safety": [
+     "safe",
+     "safe"
+    ],
+    "in_function": "OrderFactory::definition",
+    "in_class": "Database\\Factories\\OrderFactory",
+    "namespace": "Database\\Factories"
+   },
+   {
+    "file": "database/factories/OrderFactory.php",
+    "line": 22,
+    "sink_type": "Crypto",
+    "function": "rand",
+    "call_type": "func_call",
+    "args": [
+     "1",
+     "10"
+    ],
+    "arg_safety": [
+     "safe",
+     "safe"
+    ],
+    "in_function": "OrderFactory::definition",
+    "in_class": "Database\\Factories\\OrderFactory",
+    "namespace": "Database\\Factories"
+   },
+   {
+    "file": "database/factories/OrderFactory.php",
+    "line": 30,
+    "sink_type": "Crypto",
+    "function": "rand",
+    "call_type": "func_call",
+    "args": [
+     "1",
+     "20"
+    ],
+    "arg_safety": [
+     "safe",
+     "safe"
+    ],
+    "in_function": "OrderFactory::definition",
+    "in_class": "Database\\Factories\\OrderFactory",
+    "namespace": "Database\\Factories"
+   },
+   {
+    "file": "database/factories/OrderFactory.php",
+    "line": 33,
+    "sink_type": "Crypto",
+    "function": "rand",
+    "call_type": "func_call",
+    "args": [
+     "1",
+     "5"
+    ],
+    "arg_safety": [
+     "safe",
+     "safe"
+    ],
+    "in_function": "OrderFactory::definition",
+    "in_class": "Database\\Factories\\OrderFactory",
+    "namespace": "Database\\Factories"
+   },
+   {
+    "file": "public/index.php",
+    "line": 24,
+    "sink_type": "LFI",
+    "function": "require",
+    "call_type": "dynamic_include",
+    "args": [],
+    "arg_safety": [],
+    "in_function": null,
+    "in_class": null,
+    "namespace": null
+   },
+   {
+    "file": "public/index.php",
+    "line": 38,
+    "sink_type": "LFI",
+    "function": "require_once",
+    "call_type": "dynamic_include",
+    "args": [],
+    "arg_safety": [],
+    "in_function": null,
+    "in_class": null,
+    "namespace": null
+   },
+   {
+    "file": "routes/web.php",
+    "line": 19,
+    "sink_type": "LFI",
+    "function": "require",
+    "call_type": "dynamic_include",
+    "args": [],
+    "arg_safety": [],
+    "in_function": null,
+    "in_class": null,
+    "namespace": null
+   },
+   {
+    "file": "server.php",
+    "line": 21,
+    "sink_type": "LFI",
+    "function": "require_once",
+    "call_type": "dynamic_include",
+    "args": [],
+    "arg_safety": [],
+    "in_function": null,
+    "in_class": null,
+    "namespace": null
+   }
+  ],
+  "toolkit_self_findings_count": 45,
+  "tests_findings_count": 1,
+  "assessment": {
+   "routes/web.php:19": "require of each PHP file returned by a local directory scan (routes/common/*.php) — static, not user-influenced; bootstrap include, not LFI in practice.",
+   "public/index.php:24,38": "Laravel front-controller requires of vendor/autoload.php and bootstrap/app.php — fixed paths.",
+   "server.php:21": "built-in server router require_once of public/index.php — fixed path.",
+   "config/database.php:61": "array_filter($connections) used for connection cleanup, callback default (no user callback) — false-positive RCE class.",
+   "database/factories/OrderFactory.php:17,18,20,22,30,33": "rand() in model factory fixtures (dev/seed data only), not security-sensitive randomness.",
+   "tests/CreatesApplication.php:16": "require of bootstrap/app.php inside test helper — fixed path."
+  },
+  "excluded_from_scope": {
+   "tools/": "45 findings are the audit toolkit's own PHP scripts (sink_finder.php, tick_tracer.php, trace_filter.php, validate_shared.php, curl-based testers). Not part of the deployed application; excluded.",
+   "vendor/": "skipped by the tool's file collector; Composer packages (incl. dcat/laravel-admin) are covered by the dependencies recon, not here."
+  }
+ },
+ "coverage_gaps": [
+  "sink_finder.php has no definition for `DB::unprepared`/`DB::insert`/`DB::update`/`DB::delete` (STATIC_SINKS at tools/php-audit-skills/tools/sink_finder.php:196-206); the raw-SQL execution at app/Http/Controllers/Home/HomeController.php:204 is therefore reported only as an LFI read.",
+  "Method-level sink `load` (sink_finder.php:145) maps every `->load(...)` call to XXE; DOMDocument::loadXML is the real target (sink_finder.php:143).",
+  "Dynamic invocation detection flags any `$var(...)` as RCE (sink_finder.php:284-287), producing middleware `$next()` false positives.",
+  "No `unserialize`, `extract`, `eval`, `assert`, `system`/`exec`/`shell_exec`/`passthru`/`proc_open`/`popen`, `whereRaw`/`orderByRaw`/`selectRaw`, `simplexml_load_*`, or `move_uploaded_file` occurrences exist under app/ (grep cross-check, 2026-10-24): zero Deserialization sinks in scope.",
+  "vendor/ is skipped by collectPhpFiles() (sink_finder.php:869-903), so dcat/laravel-admin and all Composer packages are out of this artifact's scope.",
+  "Blade templates, JS, and config-driven callables are not parsed by this AST pass; XSS sink analysis is out of scope here.",
+  "arg_safety is a local heuristic (literal vs variable/concat). It is NOT taint tracking; every needs_trace/suspicious entry still requires the triage phase."
+ ],
+ "sink_category_coverage": {
+  "RCE": {
+   "found": 16,
+   "real_candidates": 0,
+   "note": "all 16 are middleware `$next()` closures (9), literal-pattern preg_replace without /e (6), and array_map('trim', ...) (1)"
+  },
+  "SQLi": {
+   "found": 5,
+   "real_candidates": 0,
+   "note": "all DB::raw fragments are string literals"
+  },
+  "LFI": {
+   "found": 7,
+   "real_candidates": 2,
+   "note": "HomeController:188/204 fixed paths in install flow; ApiHook:85 / ServerJiang:70 are outbound URLs; Coinbase:83 php://input; Geetest:246/296 hardcoded API"
+  },
+  "FileWrite": {
+   "found": 2,
+   "real_candidates": 2,
+   "note": "both in HomeController::doInstall (content-influenced .env write, install.lock write)"
+  },
+  "SSRF": {
+   "found": 3,
+   "real_candidates": 0,
+   "note": "Coinbase + Geetest endpoints are hardcoded literals; ApiHook (the one config-driven URL) is classified under LFI by the tool"
+  },
+  "XXE": {
+   "found": 1,
+   "real_candidates": 0,
+   "note": "Console/Kernel.php:38 Laravel command loader, not DOMDocument"
+  },
+  "Deserialization": {
+   "found": 0,
+   "real_candidates": 0,
+   "note": "no unserialize/phar:// usage under app/ (AST + grep cross-check)"
+  },
+  "Crypto": {
+   "found": 14,
+   "real_candidates": 14,
+   "note": "MD5 used in payment sign/verify paths and Geetest SDK; requires business-logic review, not a direct RCE/SSRF"
+  }
+ }
+}

@@ -1,0 +1,256 @@
+{
+  "artifact": "priority-queue",
+  "recon_kind": "phase2-triage-risk-classifier",
+  "phase": "phase2-recon",
+  "mode": "static",
+  "target": ".",
+  "generated_by": "php-audit-auditor (Phase-2 triage / risk classifier)",
+  "guidance_consumed": [
+    "tools/php-audit-skills/shared/severity_rating.md",
+    "tools/php-audit-skills/teams/team2/risk_classifier.md",
+    "tools/php-audit-skills/shared/anti_hallucination.md",
+    "tools/php-audit-skills/shared/evidence_contract.md",
+    "tools/php-audit-skills/shared/sink_definitions.md",
+    "tools/php-audit-skills/shared/php_specific_patterns.md",
+    "tools/php-audit-skills/shared/false_positive_patterns.md",
+    "tools/php-audit-skills/shared/known_cves.md",
+    "tools/php-audit-skills/teams/team4/business_logic_auditor.md",
+    "tools/php-audit-skills/phases/phase2-recon.md",
+    "tools/php-audit-skills/skills/trace/task_priority_sorter.md"
+  ],
+  "input_artifacts": [
+    "docs/security-audit/raw/framework.json",
+    "docs/security-audit/raw/routes-auth.json",
+    "docs/security-audit/raw/dependencies.json",
+    "docs/security-audit/raw/sinks.json",
+    "docs/security-audit/raw/security-config.json"
+  ],
+  "queue_limits": {
+    "max_items": 12,
+    "returned": 12,
+    "must_audit": 11
+  },
+  "items": [
+    {
+      "id": "PQ-01",
+      "priority": "P0",
+      "domain": "payment-authz",
+      "severity": "critical",
+      "mustAudit": true,
+      "title": "易支付(yipay)回调签名用数据库种子里的公开占位密钥'密钥'校验，匿名可伪造通知完成自有订单并取走卡密",
+      "file": "app/Http/Controllers/Pay/YipayController.php",
+      "line": 94,
+      "sinkType": "payment-signature-verification -> order-completion",
+      "reason": "Source: GET /pay/yipay/notify_url (routes/common/pay.php:28; CSRF is inapplicable to GET) -> $request->all() at YipayController.php:61. Sink: $expectedSign = md5($sign . $payGateway->merchant_pem) at :94, hash_equals at :95, then completedOrder() at :101. merchant_pem comes from the pays row (:69); install.sql:515 seeds /pay/yipay with merchant_pem='密钥' - a public literal - and install.sql:539-540 disables every other channel while enabling only /pay/yipay. An anonymous attacker can create an order (POST /create-order, routes/common/web.php:20), read its order_sn from the redirect, and post a forged money/out_trade_no/trade_no + sign=md5(sorted_params.'密钥') to complete it: completedOrder() runs processAuto() (OrderProcessService.php:428,509-524) and the card secrets are then readable at GET /detail-order-sn/{orderSN} (OrderController.php:171-179). The only backend check is bccomp(order->actual_price, money) at OrderProcessService.php:418-422, which the attacker already knows. Must audit: highest-impact anonymous chain, and the only gateway enabled by default."
+    },
+    {
+      "id": "PQ-02",
+      "priority": "P1",
+      "domain": "payment-authz",
+      "severity": "high",
+      "mustAudit": true,
+      "title": "completedOrder() 无行锁/幂等约束：并发回调可重复发卡，过期任务可与回调竞争把已付款订单改成过期",
+      "file": "app/Service/OrderProcessService.php",
+      "line": 399,
+      "sinkType": "payment-idempotency / TOCTOU",
+      "reason": "Source: any of the notify endpoints (routes/common/pay.php:18,21,25,28,32,41,44,48) and the free-order path PayController.php:190-196. Sink: completedOrder() loads the order with a plain first() (OrderService.php:93-97) at OrderProcessService.php:395, branches on status at :399, checks duplicate trade_no at :411-417 and writes at :423-431 inside DB::beginTransaction() (:392) with no lockForUpdate/SELECT FOR UPDATE and no unique index on orders.trade_no in database/sql/install.sql. Two concurrent authentic gateway retries can both observe STATUS_WAIT_PAY and both run processAuto() -> one payment consumes two card batches. Separately OrderExpired.php:56-58 reads the order without a lock and calls expiredOrderSN() (OrderService.php:109-112) with an unconditional UPDATE, so a notify that commits first can be overwritten to STATUS_EXPIRED (paid but undelivered). Must audit as the idempotency core of the payment path."
+    },
+    {
+      "id": "PQ-03",
+      "priority": "P1",
+      "domain": "payment-authz",
+      "severity": "high",
+      "mustAudit": true,
+      "title": "install.lock 缺失时未认证安装器可重写 .env、导入含 21 条 DROP TABLE 的 install.sql 并重置管理员 id=1",
+      "file": "app/Http/Controllers/Home/HomeController.php",
+      "line": 202,
+      "sinkType": "auth-bypass -> config write / mass-delete SQL / internal host probe",
+      "reason": "Source: GET /install and POST /do-install are registered anonymously (routes/common/web.php:37-42); InstallCheck.php:19-23 only redirects when base_path()/install.lock exists, and the repository working tree has no install.lock. Sink chain in doInstall(): request-key substitution into .env.example at HomeController.php:194-199 -> file_put_contents(base_path()/.env) at :202; DB::unprepared(file_get_contents(database/sql/install.sql)) at :204 (21 DROP TABLE statements); admin_users id=1 rewritten from request input at :206-214; install.lock written only at :216. Mitigations are real (CRLF rejection :138-145, \\ \" $ escaping :197, admin_username/password/app_url/admin_path validation :147-158, lock auto-created at Dockerfile:14 and conf/start.sh:28-30) but all are void if the lock is missing, the volume remounts empty, or INSTALL=true. Second angle for the auditor: db_host/redis_host are only CRLF-filtered yet drive a live MySQL connect (:179) and Redis set/get (:181-182) before the lock exists -> unauthenticated internal host/port probe."
+    },
+    {
+      "id": "PQ-04",
+      "priority": "P1",
+      "domain": "payment-authz",
+      "severity": "high",
+      "mustAudit": true,
+      "title": "匿名按邮箱检索订单直接返回卡密明文，不验证邮箱归属且无频控（is_open_search_pwd 默认关闭）",
+      "file": "app/Http/Controllers/Home/OrderController.php",
+      "line": 206,
+      "sinkType": "authz / IDOR -> card-secret disclosure",
+      "reason": "Source: anonymous POST /search-order-by-email (routes/common/web.php:32) -> $request->input('email') at OrderController.php:217. Sink: OrderService::withEmailAndPassword() (OrderService.php:259-269) filters on email only, and OrderController.php:208-216 requires no search_pwd while dujiaoka_config_get('is_open_search_pwd', STATUS_CLOSE) is closed by default, so it returns the 5 newest orders for any email address. Those orders render their delivered card secrets via $order['info'] (resources/views/unicorn/static_pages/orderinfo.blade.php:83-85). No rate limit, no ownership proof, no verification mail -> buyer email enumeration yields purchased cards. Note the contrast that keeps this honest: for /detail-order-sn/{orderSN} the order_sn is strtoupper(Str::random(16)) (OrderProcessService.php:317), an unguessable 16-char capability, so the email path - not SN enumeration - is the disclosure vector."
+    },
+    {
+      "id": "PQ-05",
+      "priority": "P1",
+      "domain": "payment-authz",
+      "severity": "high",
+      "mustAudit": true,
+      "title": "Stripe check/charge 的订单上下文令牌为可选，且完成订单时用订单原价而非实付金额，可低价完成高价订单",
+      "file": "app/Http/Controllers/Pay/StripeController.php",
+      "line": 485,
+      "sinkType": "business-logic -> payment amount tampering",
+      "reason": "Source: anonymous GET /pay/stripe/check (routes/common/pay.php:37); orderid/source/stripe_usd_amount all from $request->all() (:476). The HMAC order-context token is enforced only when the client sends it - `$request->filled('context') && !validateOrderContextToken(...)` at :449, :490-491, :536. With context omitted, the expected amount becomes the attacker-supplied stripe_usd_amount (:485-488) and is compared only against the Stripe Source amount/currency/owner (:501-508). Sources are created client-side with the publishable key (stripe.createSource({type,amount,currency,owner:{name: order_sn}}) in the gateway HTML at :360-382, pk injected at :27-32), so an attacker can mint a 1-cent Source whose owner.name equals their own order_sn, pass the checks and reach Charge::create() (:509-513). completedOrder() is then called with $cacheord->actual_price (:515, :550, :467) - the order price, not the amount actually charged - so the bccomp amount check in OrderProcessService.php:418-422 cannot catch the underpayment. Must audit (amount integrity)."
+    },
+    {
+      "id": "PQ-06",
+      "priority": "P2",
+      "domain": "business-logic",
+      "severity": "medium",
+      "mustAudit": true,
+      "title": "优惠券剩余次数与库存均为先检查后扣减且无行锁/原子条件，可并发复用优惠券并超卖",
+      "file": "app/Service/OrderService.php",
+      "line": 165,
+      "sinkType": "race-condition (TOCTOU) -> financial loss",
+      "reason": "Source: anonymous POST /create-order (routes/common/web.php:20) with coupon_code/by_amount/gid. Checks are plain reads: coupon->ret <= 0 at OrderService.php:165 (lookup at CouponService.php:29-35) and by_amount > goods->in_stock at OrderService.php:114 (GoodsService.php:65-73). Mutation happens later and unconditionally: CouponService::used() (CouponService.php:42-47) and retDecr() (:58-63) are invoked from OrderProcessService.php:356-361 with no `where ret > 0` guard, and stock is decremented only at payment completion (GoodsService::inStockDecr(), GoodsService.php:131-134) while card allocation uses CarmisService::withGoodsByAmountAndStatusUnsold() take(N) without a lock (CarmisService.php:29-37). No lockForUpdate anywhere -> N parallel orders all pass the check. Audit with the race_condition auditor using the statistical method required by anti_hallucination Rule 11."
+    },
+    {
+      "id": "PQ-07",
+      "priority": "P2",
+      "domain": "injection",
+      "severity": "medium",
+      "mustAudit": true,
+      "title": "商品 api_hook 配置驱动服务端 POST（file_get_contents）并携带订单 PII，无 scheme/host 白名单",
+      "file": "app/Jobs/ApiHook.php",
+      "line": 85,
+      "sinkType": "SSRF (indirect / admin-configured) with PII egress",
+      "reason": "Source: goods.api_hook (admin form field stored in DB) read via GoodsService::detail() at ApiHook.php:60; POST body built from order title/order_sn/email/actual_price/info at :65-74. Sink: stream_context_create() + file_get_contents($goodInfo->api_hook, false, $context) at :77-85, dispatched on every completed order from OrderProcessService.php:452. No scheme allowlist, no private-IP/host denylist, http:// allowed -> internal recon + plaintext PII exfiltration. Matches shared/sink_definitions.md section 6 ('webhook URL configured in admin panel'). Rule 8 counter-check the auditor must state: the value is admin-controlled (R=1), so this is second-order/admin-triggered SSRF; the reachability question is whether an attacker can ever set api_hook (admin session compromise, extension install, SystemSetting cache poisoning). Sibling app/Jobs/ServerJiang.php:70 concatenates an admin token into a hardcoded https host - check URL/CRLF manipulation there but it is not SSRF."
+    },
+    {
+      "id": "PQ-08",
+      "priority": "P2",
+      "domain": "xss-csrf-session",
+      "severity": "medium",
+      "mustAudit": true,
+      "title": "会话基线不足：cookie 无 Secure、session 未加密、AuthenticateSession 被注释、改密后旧会话仍有效",
+      "file": "config/session.php",
+      "line": 169,
+      "sinkType": "session/cookie security",
+      "reason": "config/session.php:169 'secure' => env('SESSION_SECURE_COOKIE', null) with .env.example:69 SESSION_SECURE_COOKIE=false and .env.example:49 ADMIN_HTTPS=false; :49 'encrypt' => false; :197 same_site=lax; :182 http_only=true. app/Http/Kernel.php:38 has Illuminate\\Session\\Middleware\\AuthenticateSession commented out, so a password change does not invalidate other sessions, and config/admin.php:152 'remember' => true extends admin session lifetime. conf/php.ini sets only session.cookie_httponly. Impact: any plaintext-HTTP request leaks the admin session cookie and the ForceAdminPasswordChange control (ForceAdminPasswordChange.php:32-45) cannot evict the attacker's old session. Audit against the admin guard in config/admin.php:135-144 (auth_matrix)."
+    },
+    {
+      "id": "PQ-09",
+      "priority": "P2",
+      "domain": "config-supplychain",
+      "severity": "medium",
+      "mustAudit": true,
+      "title": "Spatie Ignition execute-solution / update-config 匿名注册，仅靠 APP_DEBUG+local 的运行时判断拦截",
+      "file": "vendor/spatie/laravel-ignition/src/ignition-routes.php",
+      "line": 16,
+      "sinkType": "RCE (config-conditional) / arbitrary config write",
+      "reason": "POST /_ignition/execute-solution and POST /_ignition/update-config are registered with only the RunnableSolutionsEnabled middleware (ignition-routes.php:9-20); the guard (Support/RunnableSolutionsGuard.php:13-36) permits execution when config('app.debug') is true and the environment is local/development, or when ignition.enable_runnable_solutions is set. Shipped .env.example:2-4 is APP_ENV=production / APP_DEBUG=false (safe), while the working-tree runtime resolves to local + debug ON per recon. Audit as a config-conditioned item: record the decisive runtime evidence (config/app.php:44, .env.example, deployment docs) and cap the verdict at suspected / [Needs Verification] unless the runtime config is proven. Static mode: no dynamic exploitation."
+    },
+    {
+      "id": "PQ-10",
+      "priority": "P2",
+      "domain": "config-supplychain",
+      "severity": "medium",
+      "mustAudit": true,
+      "title": "后台上传/扩展安装面：dcat upload 无扩展名白名单，PHP 执行只在 nginx 层拒绝，且 compose 发布 9000",
+      "file": "config/admin.php",
+      "line": 262,
+      "sinkType": "file upload -> stored XSS / webshell chain (admin-authenticated)",
+      "reason": "Upload disk root is public_path('uploads') (config/filesystems.php:72-77) with images/files subdirs (config/admin.php:262-272). POST /admin/dcat-api/form/upload, /admin/dcat-api/editor-md/upload, /admin/dcat-api/tinymce/upload and /admin/auth/extensions all sit behind the single chain ['web','admin','admin.force-password'] (config/admin.php:74), where dcat's permission layer short-circuits for isAdministrator (vendor dcat Permission.php:31-40) and ForceAdminPasswordChange reacts only to the literal 'admin' hash (ForceAdminPasswordChange.php:36). PHP execution under /uploads and /storage is denied only by nginx regexes (conf/default.conf:26-45, conf/dujiaoka-nginx.conf:10-29), while docker-compose.yml:8 publishes 9000:9000 and conf/fpm-pool.conf:8 binds 127.0.0.1:9000 - resolve this [Needs Verification] binding question because an reachable FPM would bypass the nginx deny rules. No extension allowlist also means SVG/HTML upload = same-origin stored XSS from the admin context. Audit as file_operation/admin_function."
+    },
+    {
+      "id": "PQ-11",
+      "priority": "P3",
+      "domain": "config-supplychain",
+      "severity": "medium",
+      "mustAudit": false,
+      "title": "dcat/laravel-admin 精确锁定 2.2.5 且来自个人 fork（vendor 常量仍为 2.2.4），composer audit 不覆盖该代码",
+      "file": "composer.json",
+      "line": 19,
+      "sinkType": "supply-chain trust anchor",
+      "reason": "composer.json:10-14 declares repositories[0].url=https://github.com/Cecil98/dcat-admin and :19 pins \"dcat/laravel-admin\": \"2.2.5\" exactly; composer.lock resolves to that fork @ 8ff1f8225351824f454f57388e8be812e3870407 while vendor/dcat/laravel-admin/src/Admin.php:34 still declares VERSION '2.2.4'. composer audit --locked reports advisories: [] but does not index a personal fork, and the exact pin blocks upstream fixes - this is the highest-privilege code in the app (89 admin routes). mustAudit=false for the sink auditors: it is a fork-delta / vendor-review action, not a traceable source->sink finding, and is already recorded by the framework and dependency recon. Escalate to mustAudit=true only if the owner wants pre-ship fork assurance."
+    },
+    {
+      "id": "PQ-12",
+      "priority": "P2",
+      "domain": "payment-authz",
+      "severity": "medium",
+      "mustAudit": true,
+      "title": "Payjs 回调把签名校验完全委托给第三方 SDK（松散 == 比较 MD5），本地无二次校验且密钥可为占位/空",
+      "file": "app/Http/Controllers/Pay/PayjsController.php",
+      "line": 64,
+      "sinkType": "payment-signature-verification (delegated)",
+      "reason": "Source: POST /pay/payjs/notify_url (routes/common/pay.php:25) -> out_trade_no at PayjsController.php:51. The controller injects the DB secret as payjs.key (:63) and trusts Payjs::notify() (:64); vendor/xhat/payjs-laravel/src/Payjs.php:135-163 verifies strtoupper(md5(http_build_query($data).'&key='.$key)) and compares with loose `==` (:163). completedOrder() is then called with total_fee/100 straight from the payload (:72-73) with no local re-verification of signature, amount vs order, or trade_no uniqueness. Test instances: (a) loose `==` between two md5 hex strings, (b) key = merchant_pem, which is the public placeholder '密钥' for seeded rows (install.sql:507-517) and is required by the admin form (app/Admin/Controllers/PayController.php:118-119) but can be empty on imported/legacy rows, making md5(query.'&key=') computable. Payjs is not enabled by default, so R depends on the operator enabling the channel."
+    }
+  ],
+  "rejected_false_positives": [
+    {
+      "file": "app/Http/Middleware/SecurityHeaders.php",
+      "line": 13,
+      "sink": "$next()",
+      "why": "Closure invocation of the next middleware, not RCE; 9 of the 16 recon RCE hits are this shape."
+    },
+    {
+      "file": "app/Helpers/functions.php",
+      "line": 106,
+      "sink": "preg_replace",
+      "why": "No /e modifier (removed in PHP 7); pattern and replacement are literals."
+    },
+    {
+      "file": "app/Admin/Charts/DashBoard.php",
+      "line": 69,
+      "sink": "DB::raw",
+      "why": "Literal 'count(id) as num'; all 5 SQLi recon hits are constant fragments with bound where()/groupBy() values - no user input reaches SQL text in app/."
+    },
+    {
+      "file": "app/Console/Kernel.php",
+      "line": 38,
+      "sink": "->load()",
+      "why": "Command loader with a constant __DIR__.'/Commands' path; misclassified as XXE. No XML parser is reachable from user input in app/."
+    },
+    {
+      "file": "app/Http/Middleware/TrustProxies.php",
+      "line": 33,
+      "sink": "array_map('trim', ...)",
+      "why": "Literal 'trim' callback over a config array; not code execution. TRUSTED_PROXIES is empty by default (.env.example:64-66), so X-Forwarded-For spoofing is not enabled."
+    },
+    {
+      "file": "app/Http/Controllers/Home/OrderController.php",
+      "line": 171,
+      "sink": "detailOrderSN",
+      "why": "A critical 'order_sn IDOR' claim would be wrong: order_sn is strtoupper(Str::random(16)) (OrderProcessService.php:317), an unguessable 16-char capability. The realistic disclosure vector is the email search (PQ-04)."
+    },
+    {
+      "file": "app/Admin/Forms/ImportCarmis.php",
+      "line": 27,
+      "sink": "Storage::disk('public')->get($input['carmis_txt'])",
+      "why": "Admin-only form input resolved through the Flysystem 3 local adapter, which rejects path traversal; single read, no include/move. Not queued."
+    },
+    {
+      "file": "app/Http/Controllers/Pay/StripeController.php",
+      "line": 555,
+      "sink": "return $e->getMessage()",
+      "why": "Stripe SDK error text leak only; recorded as an infoleak note instead of consuming a queue slot."
+    }
+  ],
+  "deferred_low_or_info": [
+    "Unbounded anonymous GET notify/return handlers with sleep(2) (YipayController.php:117, VpayController.php:93, EpusdtController.php, TokenPayController.php:104) and no nginx limit_req/limit_conn - availability item for a later pass.",
+    "CSRF exemption globs pay/*/notify_url|return_url (app/Http/Middleware/VerifyCsrfToken.php:21-26) are correct today but silently inherit future state-changing routes; assert the exempt set in a test.",
+    "Blade unescaped sinks ({!! !!}, 19 occurrences) are admin/config- or QR-data-driven, except the mail path {!! $body !!} (resources/views/email/mail.blade.php:1) which injects buyer-supplied 代充 input (OrderProcessService.php:484,492 via replace_mail_tpl, app/Helpers/functions.php:28-41) into HTML email - low-severity HTML injection.",
+    "config/auth.php:44-48 legacy token guard with hash=false; sole consumer is GET /api/user (routes/api.php:16-18) - info.",
+    "No CSP; HSTS emitted only when $request->isSecure() (app/Http/Middleware/SecurityHeaders.php:20-22) - hardening note.",
+    "DujiaoBoot.php:29 strpos($userAgent,'QQ/') lacks `!== false`, so a UA starting with 'QQ/' bypasses the anti-redirect interstitial - logic bug, low.",
+    "composer audit --locked: 0 advisories (pipeline proven by a control query), 1 abandoned package box/spout v3.3.0 via dcat/easy-excel; phpunit 11.5.57 so CVE-2017-9841 is N/A.",
+    "AST scan + grep found no unserialize/phar:///eval/extract/system-family/move_uploaded_file/whereRaw* sinks under app/, so the deserialization and command-injection domains are closed for the application scope."
+  ],
+  "coverage": {
+    "recon_risks_reviewed": 44,
+    "queue_items": 12,
+    "must_audit": 11,
+    "domains": {
+      "payment-authz": 6,
+      "business-logic": 1,
+      "injection": 1,
+      "xss-csrf-session": 1,
+      "config-supplychain": 3
+    }
+  },
+  "notes": [
+    "Phase-3 degradation rule: if credentials/container cannot be provisioned, every auth-dependent item must be capped at 'suspected' and tagged [NOT_VERIFIED: Phase-3 degraded] per shared/degradation_check.md.",
+    "Every file:line in this queue was re-read from source during this stage; nothing was copied from the recon summaries unverified. Reachability was checked against routes/common/{web,pay}.php and app/Http/Kernel.php.",
+    "Static mode only: no container was started, no HTTP request was sent, no payload was executed. No application code, config, database or .env value was read or modified; the only write is this untracked artifact under docs/security-audit/raw/."
+  ]
+}

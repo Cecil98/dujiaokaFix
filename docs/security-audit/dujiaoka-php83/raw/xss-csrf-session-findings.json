@@ -1,0 +1,152 @@
+{
+ "artifact": "xss-csrf-session-findings",
+ "audit_kind": "phase4-domain-audit-xss-csrf-session",
+ "mode": "static",
+ "target": ".",
+ "domain": "xss-csrf-session",
+ "branch": "upgrade/php83",
+ "generated_by": "php-audit-auditor (xss-csrf-session domain, static source-to-sink)",
+ "method": "Read the assigned ITEMs (PQ-009 unescaped Blade sinks, PQ-010 session/cookie configuration), the upstream shared guidance (anti_hallucination, evidence_contract, sink_definitions, php_specific_patterns, severity_rating, false_positive_patterns) and the team4 xss_ssti / session / csrf auditor skills, then traced every claim to the current working tree: Blade views, the 'system-setting' cache writer/reader chain, admin route middleware, the Laravel 12 SessionGuard / Store / CookieJar implementation actually vendored in vendor/, php.ini + .env.example + Dockerfile deployment shape. MODE=static: no HTTP request, payload, queue run or container action was performed. No .env value or secret is printed; only key presence and file:line references are reported.",
+ "guidance_consumed": [
+  "tools/php-audit-skills/shared/anti_hallucination.md",
+  "tools/php-audit-skills/shared/evidence_contract.md",
+  "tools/php-audit-skills/shared/sink_definitions.md",
+  "tools/php-audit-skills/shared/php_specific_patterns.md",
+  "tools/php-audit-skills/shared/severity_rating.md",
+  "tools/php-audit-skills/shared/false_positive_patterns.md",
+  "tools/php-audit-skills/teams/team4/xss_ssti_auditor.md",
+  "tools/php-audit-skills/teams/team4/session_auditor.md",
+  "tools/php-audit-skills/teams/team4/csrf_auditor.md",
+  "tools/php-audit-skills/skills/auditors/xss_ssti_auditor_analyze.md",
+  "tools/php-audit-skills/skills/auditors/session_auditor_analyze.md",
+  "tools/php-audit-skills/skills/auditors/csrf_auditor_analyze.md"
+ ],
+ "items_audited": [
+  "PQ-009",
+  "PQ-010"
+ ],
+ "environment_notes": [
+  "Host has no php binary (php -v empty) and MODE=static, so no runtime probe was made; PHP/image defaults are only referenced where the shipped file (conf/php.ini, .env.example) shows what the project itself sets.",
+  "The storefront has no end-user accounts: the only visitor-side credentials are the encrypted dujiaoka_orders order-tracking cookie and the laravel_session session cookie (CACHE/session drivers: .env.example:24 SESSION_DRIVER=file).",
+  "Dcat admin roles/permissions tables are installed (database/sql/install.sql:70-140), so an 'admin' actor in this report may be a restricted-role admin, not only the super admin.",
+  "Session handling is 100% Laravel-managed: grep for session_start/session_set_cookie_params/session_id in app/ and vendor/laravel/framework/src/ returns no match, therefore PHP's native session.* directives are inert for the app cookie."
+ ],
+ "findings": [
+  {
+   "id": "PQ-009",
+   "item_id": "PQ-009",
+   "title": "Unescaped Blade raw sinks ({!! !!}) persist admin-authored HTML/JS into every storefront page (footer, notice, goods description/buy_prompt); sources are admin-authenticated only and the 'system-setting' cache has no non-admin writer",
+   "severity": "low",
+   "confidence": 0.88,
+   "status": "confirmed (static): sink, source, escaping status and auth boundary all read from the tree; no dynamic execution was attempted",
+   "verdict": "confirmed static stored-XSS sink with an author-controlled source; unauthenticated write path explicitly rejected (see PQ-009-R3)",
+   "file": "resources/views/hyper/layouts/_footer.blade.php",
+   "line": 12,
+   "sink_type": "xss (stored, raw Blade output {!! !!})",
+   "source": "Admin forms only. (a) app/Admin/Forms/SystemSetting.php:20 Cache::put('system-setting', $input) with $this->editor('notice')/textarea('footer') (app/Admin/Forms/SystemSetting.php:55-56); (b) app/Admin/Controllers/GoodsController.php:151-152 $form->editor('buy_prompt') / $form->editor('description'). Sink-side reads: app/Helpers/functions.php:60-61 Cache::get('system-setting') -> $sysConfig[$key] (dujiaoka_config_get).",
+   "sink": "Blade raw echo, no escaping: resources/views/hyper/layouts/_footer.blade.php:12 {!! dujiaoka_config_get('footer') !!}; resources/views/luna/layouts/_footer.blade.php:4; resources/views/unicorn/layouts/_footer.blade.php:9; resources/views/hyper/static_pages/home.blade.php:109 {!! dujiaoka_config_get('notice') !!}; resources/views/unicorn/static_pages/home.blade.php:12; resources/views/luna/layouts/_notice.blade.php:9 (+_notice_sm/_notice_xs:9); resources/views/hyper/static_pages/buy.blade.php:150 {!! $description !!} and :162 {!! $buy_prompt !!}; resources/views/luna/static_pages/buy.blade.php:290 {!! $description !!} and :331 {!! $buy_prompt !!}; resources/views/unicorn/static_pages/buy.blade.php:156 {!! $description !!} and :175 {!! $buy_prompt !!}.",
+   "reachability": "Rendering is fully anonymous: routes/common/web.php:14 Route::get('/','HomeController@index') and :18 Route::get('buy/{id}','HomeController@buy') sit in a group whose only middleware is 'dujiaoka.boot' (app/Http/Middleware/DujiaoBoot.php:17-54 checks install.lock / UA / locale, no auth). Controller path: app/Http/Controllers/Home/HomeController.php:47-51 -> BaseController::render (app/Http/Controllers/BaseController.php:28-32) -> hyper|unicorn|luna static_pages/home; HomeController.php:63-79 -> GoodsService::detail (app/Service/GoodsService.php:65-73, Eloquent Goods) -> render('static_pages/buy'). The layouts always include the footer partial (resources/views/hyper/layouts/default.blade.php:13, resources/views/unicorn/layouts/default.blade.php:7), so the footer value is echoed on every page of the active template. WRITE side is authenticated-admin only: app/Admin/routes.php:23 registers system-setting inside the group whose middleware is config('admin.route.middleware') = ['web','admin','admin.force-password'] (config/admin.php:74), and the dcat 'admin' group starts with 'admin.auth' (vendor/dcat/laravel-admin/src/AdminServiceProvider.php:79-88).",
+   "preconditions": "A principal able to save Dcat admin forms: the SystemSetting form, or the Goods form (description / buy_prompt). Dcat 'editor' fields (vendor/dcat/laravel-admin/src/Form/Field/Editor.php:15-33) store the posted HTML verbatim - no purifier/HTMLPurifier/strip_tags anywhere in that field or in SystemSetting::handle (app/Admin/Forms/SystemSetting.php:18-24). Optional amplifier: config/session.php:143 'path' => '/' and admin 'enable_session_middleware' => false (config/admin.php:76, short-circuits vendor/dcat/laravel-admin/src/Http/Middleware/Session.php:11-13) keep ONE session cookie for / and /admin, so script running on the storefront can same-origin fetch /admin/* while an administrator is logged in.",
+   "impact": "Persistent script execution in the browser of every storefront visitor (buyers, order lookups) and of any administrator who browses the storefront. Because the session cookie is not path-scoped (see preconditions), such script can read the storefront DOM/order cookie, phish payment pages, or issue same-origin XHR against /admin/* with the admin's cookies and read the response, i.e. a restricted-role admin (Dcat roles exist, database/sql/install.sql:70-140) can escalate against a super admin who visits the shop. No unauthenticated attacker can reach the writer, and no user-controlled text reaches these sinks (goods description/buy_prompt/footer/notice are admin-authored only), so the boundary crossed is admin -> visitor / restricted-admin -> super-admin, not internet -> admin.",
+   "evidence": {
+    "EVID_XSS_OUTPUT_POINT": "resources/views/hyper/layouts/_footer.blade.php:12 — '{!! dujiaoka_config_get('footer') !!}' inside <div class=\"text-md-right footer-links\">; same pattern at resources/views/luna/layouts/_footer.blade.php:4 and resources/views/unicorn/layouts/_footer.blade.php:9",
+    "EVID_XSS_USER_INPUT_MAPPING": "app/Admin/Forms/SystemSetting.php:55 '$this->editor('notice', ...)' + :56 '$this->textarea('footer', ...)' -> :20 'Cache::put('system-setting', $input)' -> app/Helpers/functions.php:60 '$sysConfig = Cache::get('system-setting');' -> resources/views/unicorn/static_pages/home.blade.php:12 '{!! dujiaoka_config_get('notice') !!}'",
+    "EVID_XSS_ESCAPE_STATUS": "Blade '{!! !!}' = e()-free raw echo (Laravel Blade compiler emits echo $value); no htmlspecialchars/str_replace/strip_tags between cache read (app/Helpers/functions.php:58-62) and output. Goods path: app/Admin/Controllers/GoodsController.php:151-152 editor fields -> Goods row -> HomeController::buy (app/Http/Controllers/Home/HomeController.php:63-79) -> resources/views/unicorn/static_pages/buy.blade.php:156 '{!! $description !!}'",
+    "EVID_XSS_PAYLOAD_REFLECTION": "[Not obtained: MODE=static, no container/HTTP request was made; reflection follows from Blade raw echo of the stored value]",
+    "EVID_CACHE_WRITER_SET": "grep -rn \"Cache::put|Cache::forever|Cache::remember\" app/ -> single hit app/Admin/Forms/SystemSetting.php:20; app/Http/Controllers/Home/HomeController.php:132-232 (doInstall) writes .env/install SQL only and never the 'system-setting' key",
+    "EVID_ADMIN_MIDDLEWARE": "app/Admin/routes.php:23 (route inside group) + config/admin.php:74 (['web','admin','admin.force-password']) + vendor/dcat/laravel-admin/src/AdminServiceProvider.php:79-88 (admin.auth first)",
+    "EVID_VIEW_INCLUDE": "resources/views/hyper/layouts/default.blade.php:13 @include('hyper.layouts._footer'); resources/views/unicorn/layouts/default.blade.php:7; resources/views/luna/static_pages/buy.blade.php:4 @include('luna.layouts._notice')"
+   },
+   "why_it_may_not_be_a_vulnerability": "The value is authored by an administrator through the admin panel, and a Dcat super admin can already do far worse (themes/extensions/forms), so for a single-super-admin deployment this is 'author-controlled content' rather than a privilege boundary. CSRF cannot be used to plant the payload: both admin forms go through the 'web' group's VerifyCsrfToken (app/Http/Kernel.php:34-43) whose only exemptions are 'pay/*/notify_url' and 'pay/*/return_url' (app/Http/Middleware/VerifyCsrfToken.php:21-26). There is no unauthenticated or buyer-controlled path to footer/notice/description/buy_prompt (see PQ-009-R3, PQ-009-R4). The residual risk is therefore genuine but admin-gated: stored XSS against visitors and (with Dcat roles) restricted-admin -> super-admin escalation; rated low, medium if role separation is actually used.",
+   "remediation": "Escape on output and keep the rich-text exception explicit: dump plain-text fields with '{{ }}' (footer) and wrap rich fields in a sanitizer, e.g. store sanitized HTML via mews/purifier at form save time (app/Admin/Forms/SystemSetting.php:20, app/Admin/Controllers/GoodsController.php:151-152) and render with {!! Purifier::clean(...) !!} instead of raw cache/DB values (resources/views/*/layouts/_footer.blade.php, *_notice*.blade.php, */static_pages/buy.blade.php). Add a strict CSP (the app currently sends none - app/Http/Middleware/SecurityHeaders.php:15-22) and scope/rotate the admin session cookie (config/session.php:143, config/admin.php:76) so storefront XSS cannot reach /admin."
+  },
+  {
+   "id": "PQ-009-EXTRA-1",
+   "item_id": "PQ-009",
+   "title": "Dcat goods detail page echoes admin-editable raw fields with unescape() inside a <textarea>, so a role-restricted admin can break out of the textarea and run script in a super admin's browser",
+   "severity": "low",
+   "confidence": 0.7,
+   "status": "confirmed (static): raw-output flag and interpolated value verified in dcat Show/Field.php; reachability of the goods show route assumed from the resource registration",
+   "verdict": "confirmed static stored-XSS (admin -> admin); medium if Dcat role separation is in use",
+   "file": "app/Admin/Controllers/GoodsController.php",
+   "line": 120,
+   "sink_type": "xss (stored, unescaped Show field)",
+   "source": "Goods form textareas editable by any admin allowed to update goods: app/Admin/Controllers/GoodsController.php:153-155 $form->textarea('other_ipu_cnf'), $form->textarea('wholesale_price_cnf'), $form->textarea('api_hook').",
+   "sink": "app/Admin/Controllers/GoodsController.php:117-125: $show->wholesale_price_cnf()->unescape()->as(...) returns \"<textarea ...>\" . $wholesalePriceCnf . \"</textarea>\"; the same pattern for other_ipu_cnf (:120-122) and api_hook (:123-125). vendor/dcat/laravel-admin/src/Show/Field.php:527-530 unescape() = escape(false), and the vendor show field template (vendor/dcat/laravel-admin/resources/views/show/field.blade.php:10-19) emits the value raw when $escape is false.",
+   "reachability": "GET {ADMIN_ROUTE_PREFIX}/goods/{id} exists because app/Admin/routes.php:13 registers $router->resource('goods','GoodsController'); the group middleware config/admin.php:74 requires an admin session but the dcat ACL decides who may view goods. A value like '</textarea><img src=x onerror=...>' stored through the goods form is emitted verbatim inside the show page HTML.",
+   "preconditions": "An admin account allowed to edit goods (any Dcat role with that permission) stores the payload; a higher-privileged admin opens the goods detail (Show) page.",
+   "impact": "Script execution in another administrator's authenticated admin session (same admin origin), i.e. intra-admin privilege escalation / account takeover in deployments that use Dcat roles. No anonymous or buyer input is involved.",
+   "evidence": {
+    "EVID_XSS_OUTPUT_POINT": "app/Admin/Controllers/GoodsController.php:117-119 — '$show->wholesale_price_cnf()->unescape()->as(function ($wholesalePriceCnf) { return \"<textarea ...>\" . $wholesalePriceCnf . \"</textarea>\"; })'",
+    "EVID_XSS_USER_INPUT_MAPPING": "app/Admin/Controllers/GoodsController.php:153-155 ($form->textarea('other_ipu_cnf'|'wholesale_price_cnf'|'api_hook')) -> DB row -> GoodsController::show() -> Show field :117-125",
+    "EVID_XSS_ESCAPE_STATUS": "vendor/dcat/laravel-admin/src/Show/Field.php:527-530 unescape() sets $escape=false; vendor/dcat/laravel-admin/resources/views/show/field.blade.php:10-19 branches on @if($escape) and emits the raw value when false",
+    "EVID_XSS_PAYLOAD_REFLECTION": "[Not obtained: MODE=static, no admin login/HTTP request performed]"
+   },
+   "why_it_may_not_be_a_vulnerability": "Only an admin-panel principal can write the value and only an admin-panel principal renders it; in the default single-admin deployment there is no privilege boundary to cross. The payload is not reachable from the storefront (the goods grid column is escaped by Dcat by default), so this is a hardening/role-separation issue.",
+   "remediation": "Drop unescape() and render with {{ }} (or htmlspecialchars) on app/Admin/Controllers/GoodsController.php:117-125, and set an admin-scoped CSP; do not concatenate DB values into HTML fragments."
+  },
+  {
+   "id": "PQ-010",
+   "item_id": "PQ-010",
+   "title": "Session and admin 'remember me' cookies are issued without the Secure flag by default, no HSTS/HTTP->HTTPS redirect exists, and the recaller cookie lifetime is Laravel's 400-day default; PHP session.use_strict_mode/session fixation parts are inert and rejected",
+   "severity": "low",
+   "confidence": 0.9,
+   "status": "confirmed (static configuration): every directive/flag source read; dynamic Set-Cookie capture not attempted (MODE=static)",
+   "verdict": "confirmed hardening finding (cookie transport/lifetime); session-fixation and strict-mode claims rejected (PQ-010-R1)",
+   "file": "conf/php.ini",
+   "line": 8,
+   "sink_type": "session_config (cookie flags / lifetime)",
+   "source": "conf/php.ini:7-8 'expose_php=Off' + 'session.cookie_httponly=1' only - no session.cookie_secure, no session.cookie_samesite; .env.example:69 SESSION_SECURE_COOKIE=false and :70 SESSION_SAME_SITE=lax; config/session.php:169 'secure' => env('SESSION_SECURE_COOKIE', null), :182 'http_only' => env('SESSION_HTTP_ONLY', true), :197 'same_site' => env('SESSION_SAME_SITE', 'lax').",
+   "sink": "Cookie creation: Illuminate\\Cookie\\CookieServiceProvider binds CookieJar defaults from config('session') (vendor/laravel/framework/src/Illuminate/Cookie/CookieServiceProvider.php:17-23 -> path/domain/secure/same_site), and StartSession writes the session cookie through it. The admin remember cookie is created by SessionGuard::createRecaller (vendor/laravel/framework/src/Illuminate/Auth/SessionGuard.php:641-644) with getRememberDuration() (default 576000 minutes = 400 days at :62), and the same CookieJar defaults apply.",
+   "reachability": "The session cookie is issued to any anonymous request (StartSession is in the 'web' group, app/Http/Kernel.php:37) and can be produced on the admin login page; the recaller cookie is issued when the admin ticks 'remember' (config/admin.php:151-152 'remember' => true makes the checkbox available). Exploitation needs a network position (plain-HTTP access or a TLS-terminating proxy whose X-Forwarded-Proto is not trusted): app/Http/Middleware/TrustProxies.php:19-34 leaves $proxies null unless TRUSTED_PROXIES is set and .env.example:66 ships it empty, so $request->isSecure() is false behind a TLS proxy -> SecurityHeaders adds no HSTS (app/Http/Middleware/SecurityHeaders.php:20-22) and nothing upgrades the scheme (conf/default.conf:1-2 listens on plain 80 only, no redirect; docker-compose.yml:6-8 publishes 80).",
+   "preconditions": "Deployment serves HTTP on port 80 (shipped nginx/docker-compose default) or sits behind a TLS proxy with TRUSTED_PROXIES unset/empty; attacker can observe traffic on the path (same LAN/host, malicious proxy, or a victim that reaches the http:// vhost).",
+   "impact": "Session identifier / persistent admin recaller cookie can be captured from cleartext HTTP traffic; the recaller cookie stays valid up to 400 days and re-authenticates the admin without a password (SessionGuard::user via Recaller, vendor/.../SessionGuard.php:193-240), so one intercepted request can yield long-term admin access. HttpOnly is correctly on (config/session.php:182, CookieJar default $httpOnly = true at vendor/.../CookieJar.php:70), so script cannot read the cookie - the risk is transport and lifetime, not XSS exposure.",
+   "evidence": {
+    "EVID_SESS_CONFIG_STATE": "conf/php.ini:1-8 (only expose_php=Off and session.cookie_httponly=1; no session.cookie_secure / session.use_strict_mode / session.cookie_samesite) + .env.example:69-70 SESSION_SECURE_COOKIE=false, SESSION_SAME_SITE=lax + config/session.php:169,182,197",
+    "EVID_SESS_COOKIE_FLAGS": "Derived statically: secure=false (config/session.php:169 + .env.example:69), http_only=true (:182), same_site=lax (:197), path='/' (:143) applied by vendor/laravel/framework/src/Illuminate/Cookie/CookieServiceProvider.php:17-23; recaller cookie uses the same defaults (SessionGuard.php:641-644)",
+    "EVID_SESS_LIFECYCLE_FLOW": "config/session.php:21 driver=file, :34 lifetime=120 min -> StartSession (app/Http/Kernel.php:37) -> SessionGuard::attempt/login (vendor/.../SessionGuard.php:429-460, :567-583) -> updateSession() -> session->regenerate(true) (:600-605); remember path -> queueRecallerCookie/createRecaller (:626-644) with 576000-minute default (:62); logout -> $request->session()->invalidate() (vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php:80-84)",
+    "EVID_SESS_EXPLOIT_RESPONSE": "[Not obtained: MODE=static, no HTTP/network capture performed]"
+   },
+   "why_it_may_not_be_a_vulnerability": "For a deliberately HTTP-only deployment (the shipped image listens on :80 only) a Secure cookie is impossible, and the cookie is HttpOnly + SameSite=Lax, so no script or cross-site form can read/attach it; CSRF is independently blocked by VerifyCsrfToken (app/Http/Middleware/VerifyCsrfToken.php:21-26). The 400-day recaller cookie is Laravel's framework default and is bound to the users table remember_token; it is not a classic vulnerability, and the php.ini session.* directives are inert because the app never uses PHP's native session module (see PQ-010-R1). Rated low: hardening + misconfiguration-under-TLS-proxy rather than a directly exploitable remote issue.",
+   "remediation": "Ship the secure defaults: conf/php.ini add 'session.cookie_secure=1' (harmless, inert) and, more importantly, change .env.example:69 to SESSION_SECURE_COOKIE=true with a documented opt-out for plain-HTTP testing, or derive it from the request scheme; add an HTTP->HTTPS redirect (conf/default.conf) and document TRUSTED_PROXIES for TLS-terminating deployments (.env.example:64-66). Reduce the admin remember lifetime explicitly (config/auth.php guards.admin.remember, e.g. 10080 minutes) or disable 'remember' at config/admin.php:152 for admin accounts; keep SESSION_SAME_SITE=lax/strict."
+  }
+ ],
+ "rejected": [
+  {
+   "id": "PQ-010-R1",
+   "title": "Planted session id from the anonymous storefront is adopted by the admin login (session fixation because PHP session.use_strict_mode=Off)",
+   "reason": "Rejected on all three links. (1) The app never uses PHP's native session module: grep -rn 'session_start|session_set_cookie_params|session_id(' app/ config/ routes/ and vendor/laravel/framework/src/ returns no match, so session.use_strict_mode / session.use_only_cookies do not govern the laravel_session cookie. (2) Incoming ids are format-validated and regenerated if invalid: vendor/laravel/framework/src/Illuminate/Session/Store.php:701-704 setId() keeps an id only when isValidId() (:712-715, is_string + ctype_alnum + length 40) else generates a fresh one; StartSession feeds the cookie through it (vendor/laravel/framework/src/Illuminate/Session/Middleware/StartSession.php:159). (3) Authentication rotates the id: dcat login calls $this->guard()->attempt($credentials, $remember) (vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php:66), SessionGuard::login -> updateSession -> $this->session->regenerate(true) (vendor/laravel/framework/src/Illuminate/Auth/SessionGuard.php:569, :600-605), store regenerate() destroys the old handler entry (vendor/.../Session/Store.php:618-642). The preparer's id is therefore destroyed at login and cannot be reused."
+  },
+  {
+   "id": "PQ-010-R2",
+   "title": "Not-Secure session cookie transmitted in clear text to a remote unauthenticated attacker",
+   "reason": "Partially rejected as an independent finding: with no attacker network position the flag alone is not exploitable, and the shipped deployment serves plain HTTP anyway (conf/default.conf:1-2, docker-compose.yml:6-8), so the cleartext exposure is inherent to HTTP rather than caused by the missing flag. The residual, real issue (TLS proxy deployed but TRUSTED_PROXIES empty -> isSecure() false -> no HSTS and Secure never set) is folded into PQ-010 as its impact/precondition instead of being reported twice."
+  },
+  {
+   "id": "PQ-009-R1",
+   "title": "The cached 'system-setting' blob can be poisoned by an unauthenticated user (cache poisoning -> stored XSS)",
+   "reason": "Rejected: the only writer in the whole tree is the admin form handler app/Admin/Forms/SystemSetting.php:20 Cache::put('system-setting', $input) (grep -rn 'Cache::put|Cache::forever|Cache::remember' app/ -> one hit). The route that renders it is app/Admin/routes.php:23 inside the group with middleware ['web','admin','admin.force-password'] (config/admin.php:74) whose first element is dcat 'admin.auth'. The installer app/Http/Controllers/Home/HomeController.php:132-232 writes .env + install.sql and inserts no cache key. The cache backend (config: CACHE_DRIVER=redis, .env.example:31) is not published by docker-compose.yml:6-8 (only 80 and 9000), and the fpm pool binds 127.0.0.1:9000 inside the container (conf/fpm-pool.conf:8), so the published '9000:9000' mapping (docker-compose.yml:8) does not reach FPM on loopback; Redis is an external host from .env.example:19-21 and is not published by the compose file. User-influenced cache keys are also absent: every cache read is a literal key."
+  },
+  {
+   "id": "PQ-009-R2",
+   "title": "Goods description / coupon text accepts attacker-controlled raw HTML or SVG that is rendered to visitors",
+   "reason": "Rejected for coupon and for any non-admin source. Coupon data is never printed raw: grep for '{!!' over resources/views returns no coupon sink, and the coupon code is only placed in an escaped <input> (resources/views/hyper/static_pages/buy.blade.php:85, resources/views/unicorn/static_pages/buy.blade.php:76); CouponService only updates is_use (app/Service/CouponService.php:46). goods.description / goods.buy_prompt are only writable through the admin Goods form (app/Admin/Controllers/GoodsController.php:151-152); HomeController::buy only reads them (app/Http/Controllers/Home/HomeController.php:63-79 through app/Service/GoodsService.php:65-96) and no public controller performs Goods::create/update (grep 'Goods::create|new Goods|->update(' in app/Http/Controllers/Home and app/Service shows only order/carmis/coupon/in_stock/sales_volume writes). SVG upload is likewise admin-only (Dcat image field, vendor/dcat/laravel-admin/src/Form/Field/Image.php:52 rules ['nullable','image']) and requires an authenticated admin session on the dcat-api upload route.",
+   "reason_note": "Same trust level as the reported finding, so it cannot raise the severity above admin-authored content."
+  },
+  {
+   "id": "PQ-009-R3",
+   "title": "CSRF can force a logged-in admin to store the XSS payload in footer/notice/goods",
+   "reason": "Rejected: admin pages are in the 'web' group, so VerifyCsrfToken runs for every POST (app/Http/Kernel.php:34-43); app/Http/Middleware/VerifyCsrfToken.php:21-26 exempts only 'pay/*/notify_url' and 'pay/*/return_url'. SameSite=Lax (config/session.php:197) additionally prevents the session cookie from riding along on cross-site POSTs. Planting the payload therefore requires an admin session plus a same-origin execution primitive, i.e. the XSS itself (or a malicious admin)."
+  },
+  {
+   "id": "PQ-009-R4",
+   "title": "Reflected XSS through the error view / {!! $body !!} in resources/views/email/mail.blade.php",
+   "reason": "Rejected. The error views escape their only dynamic value: '{{ $content }}' (resources/views/hyper/errors/error.blade.php:15), fed by BaseController::err (app/Http/Controllers/BaseController.php:46-51) - exceptions such as RuleValidationException messages are therefore HTML-escaped. resources/views/email/mail.blade.php:1 '{!! $body !!}' is an e-mail body, not a browser response: $body comes from admin-authored e-mail templates (App\\Service\\EmailtplService::detailByToken) with placeholders replaced from order data (app/Service/OrderProcessService.php:479-495 and :522-542), and the only buyer-influenced value is goods name + amount in $order->title (app/Service/OrderProcessService.php:321). Malicious impact is limited to HTML formatting inside a mail client; script execution in a browser is not reachable, so it is not reported as XSS."
+  },
+  {
+   "id": "PQ-009-R5",
+   "title": "Static/constant output points (QR-code base64 images, svg icon markup, menu labels) are XSS",
+   "reason": "Rejected: resources/views/*/static_pages/qrpay.blade.php and luna buy.blade.php:313 print base64_encode(QrCode::...->generate(...)) - binary PNG rendered through base64_encode, no HTML/JS context and no attacker-controlled fragment; the SVG blocks are literal template markup. Also note dujiaoka_config_get('title'|'keywords'|'description'|'text_logo') are emitted escaped '{{ }}' (resources/views/unicorn/layouts/_header.blade.php:5-7, _nav.blade.php:18, luna/layouts/_nav.blade.php:8), so the config blob reaches the page through exactly the two raw sinks already reported (footer, notice)."
+  }
+ ]
+}

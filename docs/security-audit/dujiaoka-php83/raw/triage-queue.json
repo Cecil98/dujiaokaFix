@@ -1,0 +1,301 @@
+{
+  "meta": {
+    "agent": "PHP_AUDIT_SKILLS Phase-2 triage / risk classifier (pi)",
+    "phase": "phase2_triage",
+    "mode": "static",
+    "target": ".",
+    "guidance_consumed": [
+      "tools/php-audit-skills/shared/severity_rating.md",
+      "tools/php-audit-skills/teams/team2/risk_classifier.md",
+      "tools/php-audit-skills/shared/evidence_contract.md (via recon artifacts)",
+      "tools/php-audit-skills/shared/anti_hallucination.md"
+    ],
+    "inputs": [
+      "docs/security-audit/dujiaoka-php83/raw/framework.json",
+      "docs/security-audit/dujiaoka-php83/raw/routes-auth.json",
+      "docs/security-audit/dujiaoka-php83/raw/dependencies.json",
+      "docs/security-audit/dujiaoka-php83/raw/sinks.json",
+      "docs/security-audit/dujiaoka-php83/raw/security-config.json"
+    ],
+    "note": "Every entry was re-verified against the current working tree (file:line read during triage); recon line numbers that had drifted were corrected. No exploit was run, no .env or secret value is reproduced. Items are capped at 12 per instruction."
+  },
+  "summary": {
+    "total_items": 12,
+    "by_severity": {
+      "critical": 1,
+      "high": 2,
+      "medium": 5,
+      "low": 4,
+      "info": 0
+    },
+    "by_domain": {
+      "payment-authz": 3,
+      "business-logic": 4,
+      "injection": 2,
+      "xss-csrf-session": 2,
+      "config-supplychain": 1
+    },
+    "must_audit": 11,
+    "priority_ordering_rule": "payment callback/signature/idempotency and order completion first, then auth/authorization+installer+upload, then user-controlled sources to sinks, then XSS/CSRF/session/business-logic/race, then config/supply-chain"
+  },
+  "queue": [
+    {
+      "id": "PQ-001",
+      "priority": 1,
+      "domain": "payment-authz",
+      "severity": "critical",
+      "confidence": "suspected",
+      "title": "Default-enabled yipay gateway ships a literal placeholder signing secret, so notify_url signatures are forgeable",
+      "file": "database/sql/install.sql",
+      "line": 515,
+      "sinkType": "signature_bypass",
+      "reason": "install.sql:515 seeds pays id=14 (merchant_pem='密钥'), and install.sql:539-540 leave only '/pay/yipay' enabled by default. YipayController::notifyUrl (app/Http/Controllers/Pay/YipayController.php:87-95) verifies md5(ksort'ed query + merchant_pem) with hash_equals, so any caller who knows the repo default can sign an arbitrary out_trade_no/trade_no/money; completedOrder (app/Service/OrderProcessService.php:385-424) only requires amount == order actual_price, which the unauthenticated bill/detail page discloses. Net effect: mark own order paid and receive cards without paying. Needs tracing of Pay::merchant_pem EncryptedOrPlaintext cast (app/Models/Pay.php:15-19) and of PayService::detail (is_open filter) to confirm the seeded plaintext value reaches the verifier on a fresh install.",
+      "mustAudit": true,
+      "businessImpact": [
+        "financial_impact",
+        "auth_critical"
+      ],
+      "cvssApprox": "9.1-9.8 (AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N)"
+    },
+    {
+      "id": "PQ-002",
+      "priority": 2,
+      "domain": "business-logic",
+      "severity": "high",
+      "confidence": "confirmed",
+      "title": "Anonymous /do-install rewrites .env, drops/imports schema and takes over admin_users id=1 whenever install.lock is absent",
+      "file": "app/Http/Controllers/Home/HomeController.php",
+      "line": 202,
+      "sinkType": "file_write",
+      "reason": "routes/common/web.php:37-42 expose GET install / POST do-install with only install.check; app/Http/Middleware/InstallCheck.php:19-23 gates solely on file_exists(base_path().'/install.lock') and the lock is absent in this tree (only Dockerfile:14 and conf/start.sh:28-30 create it). doInstall writes .env from request data (HomeController.php:188-202), DB::unprepared(install.sql) (:204), rewrites admin_users id=1 with attacker username/bcrypt password (:206-211) and writes the lock last (:216). Trace needed: the line 138-145 CRLF guard casts with (string) and the loop at :194-200 skips escaping for non-string values, so array-shaped input (db_host[]=...) is written via str_replace unescaped - confirm what actually lands in .env and whether phpdotenv can be bent to reshuffle APP_KEY/DB_*/APP_DEBUG, and whether an empty DB is really required before .env is written.",
+      "mustAudit": true,
+      "businessImpact": [
+        "auth_critical",
+        "pii_exposure"
+      ],
+      "cvssApprox": "8.1-8.8 (install.lock absence is deployment-dependent)"
+    },
+    {
+      "id": "PQ-003",
+      "priority": 3,
+      "domain": "payment-authz",
+      "severity": "high",
+      "confidence": "confirmed",
+      "title": "Order detail/email lookup has no ownership proof and renders delivered card secrets; password check is silently dropped when the field is empty",
+      "file": "app/Service/OrderService.php",
+      "line": 259,
+      "sinkType": "idor",
+      "reason": "detailOrderSN (app/Service/OrderService.php:212-216) and OrderController::detailOrderSN/searchOrderBySN (app/Http/Controllers/Home/OrderController.php:171-189) resolve any order by order_sn with no cookie/session/email binding, and withEmailAndPassword (:259-269) only applies the search_pwd predicate when the submitted value is non-empty, so POST search-order-by-email with a victim email returns the 5 newest orders (OrderController.php:206-222, echoed at resources/views/hyper/static_pages/orderinfo.blade.php:97) including carmis. /detail-order-sn/{orderSN} is additionally an anonymous GET. Audit scope: whether the 16-char Str::random order_sn is the only secret, whether search_pwd is stored/compared safely, and the browser-cookie path (OrderController.php:238-246, EncryptCookies).",
+      "mustAudit": true,
+      "businessImpact": [
+        "pii_exposure",
+        "financial_impact"
+      ],
+      "cvssApprox": "7.5 (AV:N/AC:L/PR:N/UI:N/C:H/I:N)"
+    },
+    {
+      "id": "PQ-004",
+      "priority": 4,
+      "domain": "payment-authz",
+      "severity": "medium",
+      "confidence": "suspected",
+      "title": "Stripe charge/check are unauthenticated GET endpoints that create real charges, skip the order-context token when absent and echo provider exception text",
+      "file": "app/Http/Controllers/Pay/StripeController.php",
+      "line": 524,
+      "sinkType": "business_logic",
+      "reason": "routes/common/pay.php:35-38 expose GET /pay/stripe/check and /pay/stripe/charge with no CSRF (GET) and no ownership binding; charge() (:524-561) and check() (:473-521) call \\Stripe\\Charge::create with the stored merchant_pem and complete the order. The order-context token is only validated when the request supplies 'context' (StripeController.php:445-448, :499-503, :536-539), so the binding check is optional and attacker-omittable; failures are returned verbatim via return $e->getMessage() (:554-556). Audit: cross-user charge attempts against PayPal/Stripe sources, refund/chargeback paths, and whether any exception text can leak merchant keys.",
+      "mustAudit": true,
+      "businessImpact": [
+        "financial_impact"
+      ],
+      "cvssApprox": "5.3-6.5"
+    },
+    {
+      "id": "PQ-005",
+      "priority": 5,
+      "domain": "business-logic",
+      "severity": "medium",
+      "confidence": "suspected",
+      "title": "Card (carmis) selection has no row locking, so concurrent order completions can deliver the same card twice",
+      "file": "app/Service/CarmisService.php",
+      "line": 31,
+      "sinkType": "race_condition",
+      "reason": "withGoodsByAmountAndStatusUnsold (app/Service/CarmisService.php:29-37) issues a plain SELECT of STATUS_UNSOLD rows and processAuto (app/Service/OrderProcessService.php:509-526) marks them sold afterwards via soldByIDS (:49-52, whereIn id + is_loop=0). Under REPEATABLE READ both transactions can read the same unsold rows before either update commits; completedOrder's transaction (OrderProcessService.php:392-434) provides no lockForUpdate, no unique constraint and no SELECT ... FOR UPDATE. Audit: reproducible double-delivery of paid cards, sales_volume inflation (OrderProcessService.php:433) and the loop-carmis (is_loop=1) variant where the card is intentionally reusable.",
+      "mustAudit": true,
+      "businessImpact": [
+        "financial_impact"
+      ],
+      "cvssApprox": "4.8-6.3"
+    },
+    {
+      "id": "PQ-006",
+      "priority": 6,
+      "domain": "business-logic",
+      "severity": "medium",
+      "confidence": "confirmed",
+      "title": "Geetest CAPTCHA enforcement on order creation is dead code (Validator object used as boolean), and the image CAPTCHA defaults to off",
+      "file": "app/Service/OrderService.php",
+      "line": 81,
+      "sinkType": "logic_error",
+      "reason": "OrderService::validatorCreateOrder:81-90 gates on `is_open_geetest == OPEN && !Validator::make($request->all(), ['geetest_challenge' => 'geetest'])`; Validator::make always returns an object (the 'geetest' rule is registered in app/Service/Geetest/GeetestServiceProvider.php:17) so `!$validator` is false and the exception at :89 can never fire even when the operator enables Geetest. Combined with the image CAPTCHA defaulting to CLOSE (app/Admin/Forms/SystemSetting.php:49-50) and no throttle on POST /create-order (app/Http/Kernel.php:34-43), this is the enabling condition for coupon/stock/order flooding reported separately.",
+      "mustAudit": true,
+      "businessImpact": [],
+      "cvssApprox": "4.3-5.3"
+    },
+    {
+      "id": "PQ-007",
+      "priority": 7,
+      "domain": "injection",
+      "severity": "medium",
+      "confidence": "suspected",
+      "title": "dcat admin form endpoints instantiate a class taken from the request and the upload variant skips passesAuthorization()",
+      "file": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php",
+      "line": 94,
+      "sinkType": "object_instantiation",
+      "reason": "resolveForm (:94-113) reads Form::REQUEST_NAME from the request, checks only class_exists() and method_exists($form,'handle') then app($formClass); uploadFile (:37-44) never calls $form->passesAuthorization() while handle (:20-24) does. Reachable at /admin/dcat-api/form, /form/upload, /form/destroy-file, /action, /value, /render, /editor-md/upload, /tinymce/upload behind the admin session. Audit whether any non-admin-authenticated path reaches it, whether arbitrary classes with a handle() method give a gadget for file write or SSRF, and whether the upload path lets a low-privilege admin write executable files outside public/uploads given the nginx PHP-execution deny.",
+      "mustAudit": true,
+      "businessImpact": [
+        "admin_function",
+        "file_operation"
+      ],
+      "cvssApprox": "4.9-6.5 (admin-gated)"
+    },
+    {
+      "id": "PQ-008",
+      "priority": 8,
+      "domain": "injection",
+      "severity": "medium",
+      "confidence": "confirmed",
+      "title": "SSRF: ApiHook job performs file_get_contents on the operator-editable goods.api_hook URL with no scheme/host/IP allowlist",
+      "file": "app/Jobs/ApiHook.php",
+      "line": 85,
+      "sinkType": "ssrf",
+      "reason": "ApiHook::handle (app/Jobs/ApiHook.php:60-86) builds a POST stream context and calls file_get_contents($goodInfo->api_hook). The value is set through dcat textarea app/Admin/Controllers/GoodsController.php:155 and rendered unescaped at :123. No validation of scheme, host, or private ranges anywhere in the write or read path; it fires after every completed order (OrderProcessService.php:452), i.e. from the queue worker, so internal targets are reachable from the worker network segment. Audit: which internal endpoints respond (cloud metadata, Redis/DB ports, admin panel) and whether the same stored value feeds any XSS in the admin UI (:123 unescape).",
+      "mustAudit": true,
+      "businessImpact": [
+        "admin_function"
+      ],
+      "cvssApprox": "4.9-6.1"
+    },
+    {
+      "id": "PQ-009",
+      "priority": 9,
+      "domain": "xss-csrf-session",
+      "severity": "low",
+      "confidence": "suspected",
+      "title": "Unescaped Blade sinks ({!! !!}) for footer/notice/goods description are stored-XSS capable if an admin value or DB import is attacker-influenced",
+      "file": "resources/views/hyper/layouts/_footer.blade.php",
+      "line": 12,
+      "sinkType": "xss",
+      "reason": "Raw output sinks: _footer.blade.php:12 and luna/layouts/_footer.blade.php:4 ({!! dujiaoka_config_get('footer') !!}), home/notice views (hyper/static_pages/home.blade.php:109, unicorn/static_pages/home.blade.php:12, luna/layouts/_notice*.blade.php:9), buy.blade.php:150/{luna:290}/{unicorn:156} ({!! $description !!}) and :162/:331/:175 ({!! $buy_prompt !!}). Sources are the admin-only SystemSetting form (app/Admin/Forms/SystemSetting.php) and the goods form, so this is a privilege-escalation-does-not-exist-here store; the audit must confirm (a) no unauthenticated path writes those cache/DB values, (b) the cached 'system-setting' blob (app/Helpers/functions.php:58-62) cannot be poisoned, and (c) whether the coupon/goods description accepts raw HTML/SVG that survives to visitors.",
+      "mustAudit": true,
+      "businessImpact": [
+        "admin_function"
+      ],
+      "cvssApprox": "3.4-4.7"
+    },
+    {
+      "id": "PQ-010",
+      "priority": 10,
+      "domain": "xss-csrf-session",
+      "severity": "low",
+      "confidence": "confirmed",
+      "title": "Session cookie is not Secure by default, PHP use_strict_mode is Off, and the admin remember cookie is long-lived",
+      "file": "conf/php.ini",
+      "line": 8,
+      "sinkType": "session_config",
+      "reason": "conf/php.ini:7-8 sets only expose_php=Off and session.cookie_httponly=1; the base image reports session.cookie_secure=Off and session.use_strict_mode=Off, and .env.example:69 ships SESSION_SECURE_COOKIE=false with SESSION_SAME_SITE=lax (config/session.php:169,197). config/admin.php:152 additionally enables a long-lived 'remember' cookie. Audit whether an attacker can fixate/plant a session id on the anonymous storefront (StartSession then admin login reuses it) and whether admin auth cookies are readable over plaintext HTTP behind a TLS-terminating proxy given TRUSTED_PROXIES is empty (app/Http/Middleware/TrustProxies.php:19-35).",
+      "mustAudit": true,
+      "businessImpact": [
+        "auth_critical"
+      ],
+      "cvssApprox": "3.1-4.4"
+    },
+    {
+      "id": "PQ-011",
+      "priority": 11,
+      "domain": "business-logic",
+      "severity": "low",
+      "confidence": "suspected",
+      "title": "Coupon redemption is non-atomic and is consumed at order creation (not payment), so an anonymous user can exhaust or oversell coupons",
+      "file": "app/Service/CouponService.php",
+      "line": 62,
+      "sinkType": "race_condition",
+      "reason": "OrderService::validatorCoupon (app/Service/OrderService.php:154-171) checks ret > 0 with a non-locking read, then createOrder (app/Service/OrderProcessService.php:351-356) calls CouponService::used (:44-49) and retDecr (app/Service/CouponService.php:56-63) without an atomic guard; withHasGoods (:29-37) never checks is_use, so the 'used' flag is decorative and the same code can be redeemed concurrently. Expiry/refund path never returns ret (retIncrByID at :71-78 is unused for abandoned orders), so an anonymous attacker can burn a coupon's remaining uses by creating unpaid orders. Audit: concurrent redemption overshoot and the coupon_discount_price math in calculateTheCouponPrice.",
+      "mustAudit": true,
+      "businessImpact": [
+        "financial_impact"
+      ],
+      "cvssApprox": "3.1-4.3"
+    },
+    {
+      "id": "PQ-012",
+      "priority": 12,
+      "domain": "config-supplychain",
+      "severity": "low",
+      "confidence": "suspected",
+      "title": "Dev-only debug surface (spatie/laravel-ignition routes, APP_DEBUG) and a mutable third-party dcat admin fork depend entirely on the build path",
+      "file": "composer.json",
+      "line": 34,
+      "sinkType": "supply_chain",
+      "reason": "composer.json:34 requires spatie/laravel-ignition in require-dev; the audit working tree mounts the dev vendor/ so `route:list` shows _ignition/execute-solution and _ignition/update-config (guarded only by RunnableSolutionsEnabled), while the shipped image built with --no-dev (Dockerfile:9) has none. The admin panel itself comes from https://github.com/Cecil98/dcat-admin pinned only through composer.lock (composer.json:10-19), and box/spout v3.3.0 is abandoned. Verification-only item: confirm the release artifact ships --no-dev vendor/, APP_DEBUG=false and a fixed commit, then treat the dev-tree route table as out of scope.",
+      "mustAudit": false,
+      "businessImpact": [
+        "admin_function"
+      ],
+      "cvssApprox": "2.0-3.7 (build-dependent)"
+    }
+  ],
+  "rejected_candidates": [
+    {
+      "file": "app/Admin/Charts/SuccessOrderCard.php",
+      "line": 67,
+      "reason": "SQL sink inventory noise: DB::raw/selectRaw arguments are string literals ('DATE(created_at) as date', 'count(id) as num'); no request-derived fragment (same for DashBoard.php:69, SalesCard.php:79). No SQLi item raised."
+    },
+    {
+      "file": "app/Http/Controllers/PayController.php",
+      "line": 123,
+      "reason": "MD5 usage across gateways (YipayController.php:94, VpayController.php:79, EpusdtController.php:89, TokenPayController.php:90, PaysapiController.php:102, CoinbaseController.php:109) is gateway-protocol signature construction, not password storage, and every comparison goes through hash_equals in secureCompare(); handed to the crypto auditor rather than queued as a finding. The exploitable part of that cluster is the placeholder-secret issue, which is queued as PQ-001."
+    },
+    {
+      "file": "app/Http/Middleware/PayGateWay.php",
+      "line": 17,
+      "reason": "Confirmed empty passthrough, but it is not itself a vulnerability: each gateway controller re-checks order state, expected route (isExpectedGatewayRoute), required fields and signature. Recorded as a design weakness, not a queue item."
+    },
+    {
+      "file": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php",
+      "line": 37,
+      "reason": "Merged into PQ-007 rather than queued separately (same controller, same auth precondition)."
+    },
+    {
+      "file": "app/Console/Kernel.php",
+      "line": 38,
+      "reason": "Scanner false positive: $this->load() is Laravel's command loader, not DOMDocument XXE. TrustProxies.php:33 array_map('trim',...) and the $next($request) middleware closures are likewise not RCE sinks."
+    },
+    {
+      "file": "app/Http/Controllers/Pay/StripeController.php",
+      "line": 554,
+      "reason": "Raw exception echo is folded into PQ-004 instead of a standalone info-leak item."
+    },
+    {
+      "file": "resources/views/common/notencent.blade.php",
+      "line": 54,
+      "reason": "{{ $nowUri }} is escaped Blade output (site_url()+path()), not an XSS sink."
+    },
+    {
+      "file": "composer.lock",
+      "line": 0,
+      "reason": "No dependency advisories: composer audit + independent OSV querybatch over 132 locked packages returned zero matches with a working control query; only abandoned box/spout remains, folded into PQ-012."
+    },
+    {
+      "file": "app/Http/Middleware/VerifyCsrfToken.php",
+      "line": 24,
+      "reason": "CSRF exemptions are limited to pay/*/notify_url and pay/*/return_url; no additional CSRF item beyond the GET-based gateway callbacks already covered by PQ-001/PQ-004."
+    }
+  ],
+  "coverage_notes": [
+    "Priority reflects the team2 classifier matrix (anonymous + high sink = P0, etc.) adjusted with the severity_rating.md R/I/C formula; when a value was not directly executable from the static tree, confidence is marked suspected and the trace needed is spelled out in the reason field.",
+    "Confirmed-vs-suspected: PQ-002/003/006/008/010 are directly readable in source; PQ-001/004/005/007/009/011/012 need phase-3 tracing or runtime confirmation.",
+    "Not queued because already fully covered by recon with negative evidence: dependency CVEs (0), .env web-reachability (docroot is public/, dotfiles denied in both nginx configs), upload PHP execution (denied in conf/nginx), admin login brute force (5/60s RateLimiter + forced password change), CSRF on storefront POSTs (token required)."
+  ]
+}

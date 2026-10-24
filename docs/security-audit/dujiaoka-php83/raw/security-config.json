@@ -1,0 +1,393 @@
+{
+  "artifact": "security-config",
+  "meta": {
+    "recon_kind": "security-config",
+    "target": ".",
+    "mode": "static",
+    "generated_at_utc": "2026-10-24T06:42:16Z",
+    "generated_by": "php-audit-recon (security-config) on pi",
+    "guidance_consumed": [
+      "tools/php-audit-skills/shared/anti_hallucination.md",
+      "tools/php-audit-skills/shared/data_contracts.md",
+      "tools/php-audit-skills/shared/evidence_contract.md",
+      "tools/php-audit-skills/shared/sink_definitions.md",
+      "tools/php-audit-skills/shared/php_specific_patterns.md",
+      "tools/php-audit-skills/shared/framework_patterns.md",
+      "tools/php-audit-skills/teams/team2/auth_auditor.md",
+      "tools/php-audit-skills/teams/team2/context_extractor.md",
+      "tools/php-audit-skills/teams/team2/risk_classifier.md"
+    ],
+    "tooling_note": "Host has no php/composer binaries. Read-only runtime checks used the project Docker images: `docker run --rm webdevops/php:8.3 php ...` (a 3-line local helper that calls password_verify() against a hash extracted from database/sql/install.sql, printing only booleans), `docker run --rm dujiaoka:2.1.0-php83 php -i | grep ...`, and `docker run --rm dujiaoka-php83-arm64-final:latest nginx -t`. No application code, config, database, container or test file was modified. No exploit payload was sent.",
+    "secrets_policy": "No .env values, APP_KEY, DB/Redis passwords, cookies, password hashes or API keys are reproduced here. The real .env was never read for values (only key names were listed and immediately redacted); secret-bearing locations are cited by file:line only."
+  },
+  "scan_scope": {
+    "reviewed": [
+      ".env.example",
+      "config/session.php",
+      "config/admin.php",
+      "config/app.php (trusted_proxies/debug/key)",
+      "config/queue.php, config/mail.php, config/cache.php, config/hashing.php, config/filesystems.php, config/logging.php",
+      "app/Admin/Controllers/AuthController.php",
+      "app/Http/Controllers/Home/HomeController.php (installer)",
+      "app/Http/Controllers/PayController.php (base) and app/Http/Controllers/Pay/*.php",
+      "app/Models/Pay.php + app/Casts/EncryptedOrPlaintext.php",
+      "app/Admin/Controllers/PayController.php (secret masking)",
+      "app/Http/Middleware/{InstallCheck,DujiaoBoot,TrustProxies,SecurityHeaders,VerifyCsrfToken,ForceAdminPasswordChange,PayGateWay,DujiaoSystem,EncryptCookies}.php",
+      "app/Http/Kernel.php",
+      "app/Admin/Forms/{SystemSetting,EmailTest}.php",
+      "app/Service/{PayService,MailConfigService,OrderProcessService}.php",
+      "app/Jobs/MailSend.php, app/Helpers/functions.php, app/Exceptions/Handler.php",
+      "routes/web.php, routes/common/web.php, routes/common/pay.php",
+      "conf/default.conf, conf/dujiaoka-nginx.conf, conf/php.ini, conf/fpm-pool.conf, conf/supervisord.conf, conf/start.sh, conf/start-hook.sh",
+      "Dockerfile, Dockerfile-ARM64, docker-compose.yml, docker-compose.arm64.yml, .dockerignore",
+      "database/sql/install.sql, database/sql/upgrade-php83.sql",
+      "README.md, debian_manual.md, docs/php83-upgrade-deployment.md",
+      "public/.htaccess, public/web.config"
+    ],
+    "not_reviewed": [
+      "live HTTP responses (MODE=static: no application request was issued)",
+      "host-level nginx/Varnish/CDN configuration outside the repository",
+      "MySQL/Redis server authentication and network exposure (infrastructure outside the repo)",
+      "the values inside the untracked working-tree .env (deliberately not read)"
+    ]
+  },
+  "summary": {
+    "highest_severity": "high",
+    "finding_count": 15,
+    "counts_by_severity": {
+      "critical": 0,
+      "high": 2,
+      "medium": 4,
+      "low": 6,
+      "info": 3
+    },
+    "posture": "The hardening work on this branch is present and verifiable in source: install lock auto-creation in both container entrypoints, installer input validation and LOCK_EX writes, non-guessable seeded admin hash, admin login rate limiting plus forced default-password rotation, uploads/storage PHP-execution denial and dotfile denial in both nginx configurations, security headers, empty-by-default TRUSTED_PROXIES, CSRF exemptions limited to pay notify/return, payment credentials encrypted at rest via an APP_KEY-backed cast and masked in the admin UI, and fail-closed notify handlers in the epay controller. Residual configuration risk concentrates in (1) the installer staying anonymously reachable whenever install.lock is absent while POST /do-install overwrites .env and executes a 21-DROP install.sql, and (2) database/sql/install.sql shipping 29 payment rows whose signing secrets are literal documentation placeholders, 26 of them is_open=1, so a fresh install exposes forgeable notify endpoints until an operator rotates keys.",
+    "session_cookie_state": "http_only=true, same_site=lax, secure=false in .env.example (config default null => false), encrypt=false, lifetime 120 minutes, expire_on_close=false, remember-me enabled on the admin guard; container PHP also has session.use_strict_mode=Off and session.cookie_secure=Off.",
+    "install_lock_state": "Lock is created automatically only by the container entrypoints (Dockerfile:11-17, conf/start.sh:28-30) when INSTALL != true. The manual (non-Docker) deployment guide in debian_manual.md never creates it. The lock is a pure file-existence check (app/Http/Middleware/InstallCheck.php:19-23) with no content, ownership or age validation, and it is written only after .env rewrite + install.sql import + admin row update."
+  },
+  "config_domains": {
+    "install_lock": {
+      "gate": "app/Http/Middleware/InstallCheck.php:19-23 - redirects to '/' when base_path()/install.lock exists, otherwise forwards the request.",
+      "boot_gate": "app/Http/Middleware/DujiaoBoot.php:20-23 - every dujiaoka.boot route is redirected to /install while the lock file is absent.",
+      "routes": "routes/common/web.php:37-42 - GET /install and POST /do-install are the only routes in the install.check group; both inherit the 'web' group (routes/web.php:14-21, app/Providers/RouteServiceProvider.php:61-63), so CSRF applies but no authentication does.",
+      "lock_creation_installer": "app/Http/Controllers/Home/HomeController.php:216 - file_put_contents(BASE_PATH/install.lock, 'install ok', LOCK_EX), executed AFTER .env rewrite (line 202), install.sql import (line 204) and admin_users update (lines 206-211).",
+      "lock_creation_container_webdevops": "Dockerfile:4 (INSTALL=false) and Dockerfile:11-17 - the image writes /app/start.sh containing `if [ \"$INSTALL\" != \"true\" ] && [ ! -e /app/install.lock ]; then echo ok > /app/install.lock; fi`.",
+      "lock_creation_container_arm64": "conf/start.sh:28-30 (copied by Dockerfile-ARM64:25) - same INSTALL gate, executed before `php artisan clear-compiled` (conf/start.sh:34).",
+      "manual_deployment": "debian_manual.md has no install.lock step (grep for 'install.lock' returns nothing in that file); only README.md:33 and docs/php83-upgrade-deployment.md:153-156 require an existing lock on upgrades.",
+      "destructive_payload": "database/sql/install.sql contains 21 `DROP TABLE IF EXISTS` statements (lines 7,54,72,102,120,138,157,178,190,206,228,252,275,299,316,343,365,401,422,443,483) and is executed verbatim by DB::unprepared (HomeController.php:204)."
+    },
+    "default_credentials": {
+      "seeded_admin_row": "database/sql/install.sql:246 inserts admin_users id=1 with the username 'admin' and a fixed bcrypt hash (hash intentionally not reproduced here).",
+      "seeded_hash_is_not_admin": "The hash was replaced in commit 71777e0 with a non-guessable value: a read-only PHP 8.3 check returned password_verify('admin', <seeded hash>) === false (also false for admin123/123456/dujiaoka/admin888/password). The plaintext of the seeded hash is unknown, so a manual `mysql < install.sql` import yields an admin account whose password cannot be guessed but also cannot be recovered.",
+      "installer_sets_credentials": "app/Http/Controllers/Home/HomeController.php:135-152 - admin_username must match /^[A-Za-z0-9_]{3,32}$/ and admin_password must be >= 10 characters; lines 206-211 overwrite the seeded row with bcrypt($adminPassword).",
+      "default_password_detection": "app/Admin/Controllers/AuthController.php:35-37 and app/Http/Middleware/ForceAdminPasswordChange.php:32-39 only ever test password_verify('admin', ...), so the forced-rotation control fires for legacy admin/admin installs but not for the current seeded row (whose plaintext is unknown).",
+      "login_rate_limit": "app/Admin/Controllers/AuthController.php:17-25 - RateLimiter key `admin-login:<username>|<request ip>`, 5 attempts per 60 seconds, cleared on success (line 30).",
+      "password_policy_on_change": "app/Admin/Controllers/AuthController.php:48-62 - rejects new passwords shorter than 10 characters and rejects 'admin'.",
+      "admin_route_protection": "config/admin.php:74 - route middleware ['web','admin','admin.force-password']; config/admin.php:130-162 enables auth with the 'admin' session guard, remember-me true (line 152) and only auth/login + auth/logout in the except list (lines 156-159); 'enable_session_middleware' is false (lines 76,161)."
+    },
+    "upload_execution": {
+      "storage_location": "config/admin.php:262-272 uploads go to disk 'admin' with directories images/ and files/; config/filesystems.php:72-77 maps disk 'admin' to root public_path('uploads') - i.e. inside the web root.",
+      "nginx_deny_alpine": "conf/default.conf:25-45 - `location ^~ /uploads/` and `location ^~ /storage/` each contain a nested `location ~ \\.php$ { deny all; }` plus `try_files $uri =404`.",
+      "nginx_deny_webdevops": "conf/dujiaoka-nginx.conf:9-29 (copied to /opt/docker/etc/nginx/vhost.common.d/20-dujiaoka-security.conf by Dockerfile:19) contains the same uploads/storage PHP denial; the file is included inside the server block (verified: /opt/docker/etc/nginx/vhost.conf includes vhost.common.d/*.conf at line 10 and 26).",
+      "dotfiles": "conf/default.conf:47-50 and conf/dujiaoka-nginx.conf:31-34 - `location ~ /\\.(?!well-known).* { deny all; }`.",
+      "apache_iis_alternative": "public/.htaccess (lines 1-21) and public/web.config (lines 1-28) contain no rule preventing PHP execution of public/uploads/*; the deny exists only in the shipped nginx configs and in debian_manual.md:102-106.",
+      "container_permissions": "Dockerfile:22-28 and Dockerfile-ARM64:33-40 chmod 0775 on storage, bootstrap/cache and public/uploads, owned by the application user that also runs php-fpm (conf/fpm-pool.conf:5-6)."
+    },
+    "session_cookie": {
+      "env_defaults": ".env.example:24 SESSION_DRIVER=file, :25 SESSION_LIFETIME=120, :69 SESSION_SECURE_COOKIE=false, :70 SESSION_SAME_SITE=lax.",
+      "config_defaults": "config/session.php:34 lifetime 120, :36 expire_on_close false, :49 encrypt false, :127-130 cookie name derived from APP_NAME, :143 path '/', :169 secure => env('SESSION_SECURE_COOKIE', null), :182 http_only => env('SESSION_HTTP_ONLY', true), :197 same_site => env('SESSION_SAME_SITE', 'lax').",
+      "remember_cookie": "config/admin.php:152 'remember' => true - the admin guard issues a remember cookie whose lifetime is Laravel's 5-year default, so the long-lived credential outlives the 120-minute session.",
+      "encryption": "app/Http/Middleware/EncryptCookies.php:14-16 keeps the framework default (all cookies encrypted, no exceptions) - the payload is encrypted but the secure flag is still absent.",
+      "php_runtime": "conf/php.ini:8 sets session.cookie_httponly=1 only; there is no session.cookie_secure and no session.use_strict_mode. Inside dujiaoka:2.1.0-php83 `php -i` reports session.cookie_httponly=On, session.cookie_secure=Off, session.use_strict_mode=Off, session.use_only_cookies=On, session.cookie_samesite empty.",
+      "id_rotation": "vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php:239 calls $request->session()->regenerate() on successful login, which mitigates fixation at login but does not make unauthenticated attacker-chosen IDs invalid beforehand (strict mode off)."
+    },
+    "proxy_trust": {
+      "config": "config/app.php:18 'trusted_proxies' => env('TRUSTED_PROXIES'); .env.example:64-66 ships it empty together with a warning that '*' lets clients forge X-Forwarded-For and bypass rate limiting.",
+      "middleware": "app/Http/Middleware/TrustProxies.php:19,26,28-35 - $proxies stays null unless the env value is a non-empty string; the trusted headers are X_FORWARDED_FOR|HOST|PORT|PROTO.",
+      "rate_limit_dependency": "app/Admin/Controllers/AuthController.php:17 keys the limiter on $request->ip(), whose value depends on TrustProxies; behind an untrusted proxy every client collapses to the proxy IP, while TRUSTED_PROXIES=* on a directly exposed port makes the limiter spoofable.",
+      "https_detection": "app/Http/Middleware/DujiaokaSystem (app/Http/Middleware/DujiaoSystem.php:19-27) and SecurityHeaders both derive HTTPS from the request scheme, i.e. from the forwarded proto when proxies are trusted."
+    },
+    "security_headers": {
+      "middleware": "app/Http/Middleware/SecurityHeaders.php:15-22 sets X-Content-Type-Options, X-Frame-Options SAMEORIGIN, Referrer-Policy, Permissions-Policy on every 'web' response, and HSTS only when $request->isSecure().",
+      "registration": "app/Http/Kernel.php:42 registers SecurityHeaders in the 'web' group only; the 'api' group (Kernel.php:45-48) has no SecurityHeaders.",
+      "nginx_headers": "conf/default.conf:10-13 and conf/dujiaoka-nginx.conf:4-7 duplicate the same four headers (always) plus server_tokens off (conf/default.conf:5, conf/dujiaoka-nginx.conf:2); X-Powered-By is additionally hidden from FastCGI responses (conf/default.conf:63).",
+      "gaps": "No Content-Security-Policy anywhere (grep for CSP in conf/ and app/ returns nothing), no HSTS at the nginx layer, and HSTS is unreachable when TLS terminates at a proxy that is not in TRUSTED_PROXIES."
+    },
+    "payment_secrets": {
+      "encrypted_cast": "app/Models/Pay.php:15-19 casts merchant_id/merchant_key/merchant_pem with App\\Casts\\EncryptedOrPlaintext; app/Casts/EncryptedOrPlaintext.php:23-29 decrypts only base64+json payloads, :38-49 encrypts new values, :51-63 detects ciphertext, and the getter intentionally lets DecryptException propagate instead of silently returning ciphertext.",
+      "admin_masking": "app/Admin/Controllers/PayController.php:30-32 (grid), :70-72 (detail) and :111-141 (form with customFormat '********', deleteInput on masked input, disableDeleteButton at line 135).",
+      "placeholder_seed": "database/sql/install.sql:506-535 seeds 29 pays rows; 26 of them have is_open=1 with documentation placeholders as secrets, e.g. line 515 (yipay alipay, is_open=2 / disabled), 516 (yipay wxpay, key '密钥', is_open=1), 519/520 (vpay, merchant_id used as HMAC/MD5 key, is_open=1), 521 (stripe, 'sk开头的密钥'), 525-534 (tokenpay rows with '你的API密钥' and 'https://token-pay.xxx.com', all is_open=1).",
+      "pay_selection": "app/Service/PayService.php:28-35 and :47-54 - only rows with is_open = 1 are offered to the front end and accepted by loadGateWay, so enabled placeholder rows are live.",
+      "signature_paths": "app/Http/Controllers/Pay/YipayController.php:41,94 (md5(sorted params + merchant_pem), hash_equals at :95/:123-130); VpayController.php:43,79; MapayController.php:45,75; PaysapiController.php:101; TokenPayController.php:67,89-90; EpusdtController.php:67,88-89; CoinbaseController.php:107-110 (hash_hmac sha256). All rely on the stored key being secret.",
+      "upgrade_normalization": "database/sql/upgrade-php83.sql:64-66 sets every pays row is_open=0 and then is_open=1 only for pay_handleroute='/pay/yipay' - the correct default - but this only helps existing databases that run the upgrade script; a fresh install.sql import does not get it, and the enabled yipay rows keep the literal key '密钥' until an operator changes it.",
+      "runtime_secret_store": "app/Admin/Forms/SystemSetting.php:20 stores the whole settings array with Cache::put('system-setting', $input) (no TTL, no encryption), including smtp 'password' (line 81), telegram_bot_token (line 64), bark_token (line 71), qywxbot_key (line 74), geetest_key (line 88); it is read back into the form at line 99 and consumed by app/Service/MailConfigService.php:23-35, app/Jobs/MailSend.php:69-70 and app/Helpers/functions.php:58-62."
+    },
+    "queue_mail_failure": {
+      "queue_config": ".env.example:31 CACHE_DRIVER=redis and :36 QUEUE_CONNECTION=redis; config/queue.php:16 default, :61-67 redis connection with retry_after 90 and block_for null; config/queue.php:82-86 selects the database failed-job driver with table 'failed_jobs', which exists in database/sql/install.sql:343-353 and is created idempotently by database/sql/upgrade-php83.sql:40-62.",
+      "worker_webdevops": "Dockerfile:15 starts `su application -s /bin/sh -c \"php artisan queue:work --tries=3\" >/tmp/work.log 2>&1 &` from the generated /app/start.sh before `exec supervisord`; the worker is not supervised, so if it exits the queue silently stops and its log lives inside the container.",
+      "worker_arm64": "conf/supervisord.conf:30-41 defines [program:dujiaoka-worker] with autorestart=true, numprocs=1, stdout_logfile=/dev/stderr.",
+      "payment_ack_path": "app/Service/OrderProcessService.php:392-457 - DB::commit() at line 435 is followed by ServerJiang/TelegramPush/Bark/WorkWeiXin/ApiHook dispatches (lines 437-452) inside the same try; any queue/Redis failure there is caught at line 454 and rethrown as RuleValidationException, so a paid order can be answered with 'fail'. The epay notify handler wraps completedOrder and returns 'fail' on Throwable (app/Http/Controllers/Pay/YipayController.php:100-108) while Epusdt/TokenPay/Paysapi/Mapay/Vpay call it unguarded (EpusdtController.php:94, TokenPayController.php:95, PaysapiController.php:107, MapayController.php:80, VpayController.php:84).",
+      "mail_job": "app/Jobs/MailSend.php:23 tries=2, :30 timeout=30, :58-65 validates the recipient and logs invalid addresses (including the address itself), :69-73 applies cached SMTP config and sends; a missing/invalid SMTP config therefore burns both attempts and lands in failed_jobs.",
+      "mail_env_mismatch": ".env.example:51-57 still sets MAIL_ENCRYPTION=ssl, but config/mail.php:27 reads env('MAIL_SCHEME') and the Laravel 12 build has no 'encryption' key for the smtp mailer - the documented ssl setting is ignored unless the operator adds MAIL_SCHEME=smtps or configures SMTP through the admin system-setting form (which MailConfigService maps correctly).",
+      "error_surfacing": "app/Admin/Forms/EmailTest.php:40-45 returns $e->getMessage() to the admin UI, and app/Http/Controllers/Pay/StripeController.php:554-556 returns $e->getMessage() to the HTTP caller."
+    },
+    "php_runtime_hardening": {
+      "ini_shipped": "conf/php.ini:1-8 - date.timezone, memory_limit 256M, upload_max_filesize 50M, post_max_size 50M, max_execution_time 300, cgi.fix_pathinfo=0, expose_php=Off, session.cookie_httponly=1.",
+      "effective_in_image": "dujiaoka:2.1.0-php83 `php -i`: display_errors=Off (good), display_startup_errors=On, expose_php=Off, allow_url_fopen=On, allow_url_include=Off, disable_functions=(empty), open_basedir=(unset), log_errors=On, opcache.validate_timestamps=On.",
+      "fpm_pool_arm64": "conf/fpm-pool.conf:8 listen 127.0.0.1:9000, :10 pm.status_path=/fpm-status, :16 clear_env=no, :17-18 catch_workers_output/decorate_workers_output, :20 ping.path=/fpm-ping. Neither status nor ping path is routed by nginx (conf/default.conf has no /fpm-status or /fpm-ping location), so they are not exposed by the shipped vhost.",
+      "fpm_pool_webdevops": "The non-ARM image does not copy conf/fpm-pool.conf; the base image ships /usr/local/etc/php-fpm.d/application.conf with listen = 127.0.0.1:9000 (verified inside dujiaoka:2.1.0-php83).",
+      "supervisor": "conf/supervisord.conf:3 user=root, :8-17 php-fpm83 as root master, :19-28 nginx as root - the masters run as root while workers drop to 'application'."
+    },
+    "container_and_compose": {
+      "webdevops_image": "Dockerfile:1 webdevops/php-nginx:8.3, :3 WEB_DOCUMENT_ROOT=/app/public, :4 INSTALL=false, :9 composer install --no-dev (so require-dev spatie/laravel-ignition is not present in the image), :19-20 copies of the nginx snippet and php.ini.",
+      "arm64_image": "Dockerfile-ARM64:1 alpine:3.20, :10-16 php83 + nginx + supervisor, :30-41 composer install, `rm -f /app/.env` (line 34), ownership/chmod pass, :43 EXPOSE 80.",
+      "env_not_baked": ".dockerignore:3-5 excludes .env and .env.* while keeping .env.example, and neither image contains /app/.env (verified: `ls /app/.env` => No such file or directory in dujiaoka:2.1.0-php83 and dujiaoka-php83-arm64-final:latest).",
+      "compose_port": "docker-compose.yml:8 publishes 9000:9000 although php-fpm listens on 127.0.0.1:9000 only, so the mapping is inert today but would expose FastCGI if the pool listener were ever widened.",
+      "compose_locks": "docker-compose.yml:9-15 and docker-compose.arm64.yml:10-14 mount host .env, install.lock, storage and public/uploads; INSTALL defaults to false (docker-compose.yml:18, arm64:17).",
+      "image_drift": "The locally built dujiaoka-php83-arm64-final:latest contains a /start.sh whose lock test is `[ ! -d /app/install.lock ]` whereas conf/start.sh:28 uses `[ ! -e ... ]`; the image is therefore older than the working tree and must not be used as evidence of current entrypoint behaviour."
+    }
+  },
+  "findings": [
+    {
+      "id": "CFG-01",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Installer is anonymously reachable whenever install.lock is missing, and do-install rewrites .env plus runs a 21-DROP schema",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "app/Http/Middleware/InstallCheck.php:19-23 (existence-only gate); routes/common/web.php:37-42 (no auth middleware); app/Http/Controllers/Home/HomeController.php:132-228",
+        "EVID_CFG_RUNTIME_SETTING": "HomeController.php:184-202 builds .env from .env.example and file_put_contents($envPath,...); :204 DB::unprepared(file_get_contents(install.sql)); :206-211 rewrites admin_users id=1 with attacker-supplied username/password; :216 writes the lock only afterwards",
+        "EVID_CFG_IMPACT_SCOPE": "database/sql/install.sql:7,54,72,102,120,138,157,178,190,206,228,252,275,299,316,343,365,401,422,443,483 - all application tables dropped; .env (DB, Redis, APP_KEY, ADMIN_ROUTE_PREFIX) replaced",
+        "EVID_CFG_SECURITY_SWITCH": "Lock creation happens only in containers (Dockerfile:14, conf/start.sh:28-30) and requires INSTALL != true; the manual deployment path in debian_manual.md never creates it"
+      },
+      "code": "// app/Http/Middleware/InstallCheck.php:19-23\n$installLock = base_path() . DIRECTORY_SEPARATOR . 'install.lock';\nif (file_exists($installLock)) {\n    return redirect(url('/'));\n}\nreturn $next($request);\n// app/Http/Controllers/Home/HomeController.php:202-216\nfile_put_contents($envPath, $envTemp, LOCK_EX);\nDB::unprepared(file_get_contents($installSql));\n... $updated = DB::table('admin_users')->where('id', 1)->update([...bcrypt($adminPassword)...]);\nfile_put_contents($installLock, 'install ok', LOCK_EX);",
+      "why_might_not_be_vulnerable": "Both container entrypoints auto-create the lock when INSTALL=false (the default), the POST needs a valid CSRF token, and docs/php83-upgrade-deployment.md:153-156 tells operators to pre-create install.lock. The exposure therefore requires a deployment where the lock was never created (manual/LEMP per debian_manual.md, a container started with INSTALL=true and no lock volume, or a deleted lock) - but in that state the control is a single file-existence check with no auth in front of a destructive installer.",
+      "preconditions": ["install.lock absent", "installer reachable over the network", "CSRF token obtained from GET /install"]
+    },
+    {
+      "id": "CFG-02",
+      "severity": "high",
+      "confidence": "high",
+      "title": "install.sql enables 26 payment gateways whose signing secrets are literal documentation placeholders",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "database/sql/install.sql:506-535 pays seed rows; database/sql/install.sql:515 (yipay alipay is_open=2), :516 (yipay wxpay, key '密钥', is_open=1), :519-520 (vpay, key placeholder, is_open=1), :521 (stripe, 'sk开头的密钥'), :525-534 (tokenpay, '你的API密钥', is_open=1)",
+        "EVID_CFG_RUNTIME_SETTING": "app/Service/PayService.php:28-35 selects where('is_open', STATUS_OPEN) and app/Service/PayService.php:47-54 detailByCheck does the same, so is_open=1 rows are live",
+        "EVID_CFG_IMPACT_SCOPE": "app/Http/Controllers/Pay/VpayController.php:71-84, MapayController.php:71-81, PaysapiController.php:98-108, TokenPayController.php:71-97 - callback signature = md5/hmac over request fields + the stored key, so a published key makes forged 'payment succeeded' callbacks verifiable",
+        "EVID_CFG_SECURITY_SWITCH": "database/sql/upgrade-php83.sql:65-66 (UPDATE pays SET is_open=0; then =1 only for /pay/yipay) shows the intended default, but a fresh install.sql import never gets it"
+      },
+      "code": "// database/sql/install.sql:519\nINSERT INTO `pays` VALUES (19, 'V 免签支付宝', 'vzfb', 1, 1, 'V 免签通讯密钥', NULL, 'V 免签地址 例如 https://vpay.qq.com/    结尾必须有/', 'pay/vpay', 1, ...);\n// app/Http/Controllers/Pay/VpayController.php:71,79-84\n$key = $payGateway->merchant_id;//通讯密钥\n$_sign = md5($payId . $param . $type . $price . $reallyPrice . $key);\nif (!$this->secureCompare($_sign, $sign)) { return 'fail'; }\n$this->orderProcessService->completedOrder($param, (float) $reallyPrice, $payId);",
+      "why_might_not_be_vulnerable": "The values are advisory placeholders that an operator is expected to replace, the attacker still needs a valid order_sn (visible to whoever created the order) and completedOrder re-checks the amount against actual_price (which the attacker supplies in the forged callback, so that check does not block it). Epusdt/Coinbase seed rows are is_open=0 and the upgrade script disables everything except yipay, which narrows but does not remove the risk because the enabled yipay rows also keep the literal key '密钥' until rotated.",
+      "preconditions": ["fresh install.sql import (or upgrade without rotating keys)", "gateway left is_open=1 with placeholder secret", "attacker knows or can create the target order_sn"]
+    },
+    {
+      "id": "CFG-03",
+      "severity": "medium",
+      "confidence": "high",
+      "title": "Session cookies lack the Secure flag by default and PHP runs without session.use_strict_mode",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": ".env.example:69 SESSION_SECURE_COOKIE=false; config/session.php:169 secure => env('SESSION_SECURE_COOKIE', null); config/session.php:49 encrypt=false; :182 http_only=true; :197 same_site='lax'",
+        "EVID_CFG_RUNTIME_SETTING": "conf/php.ini:8 sets only session.cookie_httponly; `php -i` in dujiaoka:2.1.0-php83 reports session.cookie_secure=Off and session.use_strict_mode=Off",
+        "EVID_CFG_IMPACT_SCOPE": "admin guard sessions (config/admin.php:130-162) and every front-end order page share the same cookie policy; config/admin.php:152 remember=true issues a long-lived remember cookie",
+        "EVID_CFG_SECURITY_SWITCH": "README.md:34 and debian_manual.md tell operators to set SESSION_SECURE_COOKIE=true, i.e. the secure default is opt-in"
+      },
+      "code": "// config/session.php:169\n'secure' => env('SESSION_SECURE_COOKIE', null),\n// .env.example:69-70\nSESSION_SECURE_COOKIE=false\nSESSION_SAME_SITE=lax",
+      "why_might_not_be_vulnerable": "The cookie is encrypted (EncryptCookies has no exceptions), HttpOnly is on, SameSite=Lax blocks most cross-site CSRF-style leakage, and dcat regenerates the session id on login (vendor AuthController.php:239); the residual risk is plaintext transport of a privileged cookie on http deployments and fixation of never-seen ids.",
+      "preconditions": ["deployment served over plain HTTP or mixed content", "operator does not set SESSION_SECURE_COOKIE=true"]
+    },
+    {
+      "id": "CFG-04",
+      "severity": "medium",
+      "confidence": "high",
+      "title": "HSTS / https-aware behaviour silently disabled behind a TLS-terminating proxy because TRUSTED_PROXIES defaults to empty",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "config/app.php:18 'trusted_proxies' => env('TRUSTED_PROXIES') and .env.example:64-66 (empty by default)",
+        "EVID_CFG_RUNTIME_SETTING": "app/Http/Middleware/TrustProxies.php:19,28-35 - $proxies remains null unless a non-empty string is supplied",
+        "EVID_CFG_IMPACT_SCOPE": "app/Http/Middleware/SecurityHeaders.php:20-22 adds Strict-Transport-Security only when $request->isSecure(); ADMIN_HTTPS defaults to false (.env.example:47-49, config/admin.php:117)",
+        "EVID_CFG_SECURITY_SWITCH": "No HSTS in conf/default.conf or conf/dujiaoka-nginx.conf (headers are X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy only)"
+      },
+      "code": "// app/Http/Middleware/SecurityHeaders.php:20-22\nif ($request->isSecure()) {\n    $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');\n}",
+      "why_might_not_be_vulnerable": "Direct TLS termination inside nginx (as in debian_manual.md) makes isSecure() true and HSTS is emitted; the issue only appears in the common reverse-proxy topology where the operator leaves TRUSTED_PROXIES empty, which also degrades the login rate limiter key to the proxy IP.",
+      "preconditions": ["TLS terminated by an upstream proxy", "TRUSTED_PROXIES left empty"]
+    },
+    {
+      "id": "CFG-05",
+      "severity": "medium",
+      "confidence": "high",
+      "title": "SMTP password and push/bot tokens are cached in plaintext under a single Redis key with no TTL",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "app/Admin/Forms/SystemSetting.php:20 Cache::put('system-setting', $input); fields at :64 telegram_bot_token, :71 bark_token, :74 qywxbot_key, :81 password (SMTP), :88 geetest_key",
+        "EVID_CFG_RUNTIME_SETTING": "app/Helpers/functions.php:58-62 reads the cache on every request; config/mail.php:18-19 documents that SMTP settings come from this cache",
+        "EVID_CFG_IMPACT_SCOPE": "app/Service/MailConfigService.php:23-35 applies host/username/password to the mailer; app/Admin/Forms/SystemSetting.php:99 returns the same array to the admin form",
+        "EVID_CFG_SECURITY_SWITCH": ".env.example:31 CACHE_DRIVER=redis; config/cache.php:21 default store; the payment secrets get an encrypted cast (app/Models/Pay.php:15-19) but system settings get none"
+      },
+      "code": "// app/Admin/Forms/SystemSetting.php:20\nCache::put('system-setting', $input);\n// :81\n$this->text('password', admin_trans('system-setting.fields.password'));",
+      "why_might_not_be_vulnerable": "Writing requires an authenticated admin, the cache lives in Redis rather than the database, and Redis is normally reachable only from the app network; this is an at-rest/defence-in-depth gap (any Redis snapshot, backup, monitor command or weak Redis password exposes mail credentials) rather than a directly reachable vulnerability.",
+      "preconditions": ["admin access to the system-setting form to seed the value", "read access to the Redis instance or its backups"]
+    },
+    {
+      "id": "CFG-06",
+      "severity": "medium",
+      "confidence": "medium",
+      "title": "Primary Dockerfile runs the queue worker unsupervised, and a queue failure inside the post-commit dispatch block turns a successful payment into 'fail'",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "Dockerfile:15 - `su application -s /bin/sh -c \"php artisan queue:work --tries=3\" >/tmp/work.log 2>&1 &` inside the generated start.sh; conf/start.sh:36 `exec supervisord`; conf/supervisord.conf:30-41 only exists in the ARM64 image",
+        "EVID_CFG_RUNTIME_SETTING": "app/Service/OrderProcessService.php:392-457 - DB::commit() at line 435 followed by ServerJiang/Telegram/Bark/WorkWeiXin/ApiHook dispatches at 437-452 inside the try whose catch at 454 throws RuleValidationException",
+        "EVID_CFG_IMPACT_SCOPE": "app/Http/Controllers/Pay/*.php notify handlers translate that exception into a gateway-visible failure (YipayController.php:100-108 guarded; EpusdtController.php:94, TokenPayController.php:95, VpayController.php:84, PaysapiController.php:107, MapayController.php:80 unguarded and would surface as HTTP 500)",
+        "EVID_CFG_SECURITY_SWITCH": ".env.example:36 QUEUE_CONNECTION=redis makes Redis a hard dependency of the payment acknowledgement path; config/queue.php:61-67 retry_after 90 / block_for null"
+      },
+      "code": "// Dockerfile:14-16\n'if [ \"$INSTALL\" != \"true\" ] && [ ! -e /app/install.lock ]; then echo ok > /app/install.lock; fi' \n'su application -s /bin/sh -c \"php artisan queue:work --tries=3\" >/tmp/work.log 2>&1 &' \n'exec supervisord'",
+      "why_might_not_be_vulnerable": "The order is already committed before dispatch, so no payment data is lost; a retried gateway notification hits the idempotent branch in OrderProcessService.php:400-410 (same trade_no acknowledged). The impact is therefore duplicate/failed acknowledgements plus stalled mail/expiry jobs, not direct tampering - and the ARM64 image uses a supervised worker.",
+      "preconditions": ["non-ARM image or manual supervisor setup", "queue/Redis unavailability, or the detached worker exits"]
+    },
+    {
+      "id": "CFG-07",
+      "severity": "low",
+      "confidence": "high",
+      "title": "No Content-Security-Policy, and security headers are applied to the 'web' group only",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "app/Http/Kernel.php:42 (SecurityHeaders only in 'web'); :45-48 ('api' group has throttle + bindings only)",
+        "EVID_CFG_RUNTIME_SETTING": "app/Http/Middleware/SecurityHeaders.php:15-18",
+        "EVID_CFG_IMPACT_SCOPE": "admin and storefront pages get nosniff/frame-options/referrer/permissions; any api-group JSON response gets none",
+        "EVID_CFG_SECURITY_SWITCH": "conf/default.conf:10-13 and conf/dujiaoka-nginx.conf:4-7 also stop at those four headers; no CSP and no HSTS"
+      },
+      "code": "// app/Http/Middleware/SecurityHeaders.php:15-18\n$response->headers->set('X-Content-Type-Options', 'nosniff');\n$response->headers->set('X-Frame-Options', 'SAMEORIGIN');\n$response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');\n$response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');",
+      "why_might_not_be_vulnerable": "The templates escape output and X-Frame-Options SAMEORIGIN blocks framing; missing CSP is a defence-in-depth gap, not a standalone exploit, and nginx duplicates the headers for static files.",
+      "preconditions": []
+    },
+    {
+      "id": "CFG-08",
+      "severity": "low",
+      "confidence": "high",
+      "title": "PHP ini hardening gaps in the shipped images (no open_basedir/disable_functions, display_startup_errors On)",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "conf/php.ini:1-8",
+        "EVID_CFG_RUNTIME_SETTING": "`php -i` in dujiaoka:2.1.0-php83: display_startup_errors=On, allow_url_fopen=On, disable_functions=(empty), open_basedir=(unset), opcache.validate_timestamps=On",
+        "EVID_CFG_IMPACT_SCOPE": "all PHP execution inside the container (web, queue worker, artisan)",
+        "EVID_CFG_SECURITY_SWITCH": "Positive controls present: expose_php=Off, display_errors=Off, cgi.fix_pathinfo=0, session.cookie_httponly=1, nginx server_tokens off"
+      },
+      "code": "// conf/php.ini:5-8\nmax_execution_time=300\ncgi.fix_pathinfo=0\nexpose_php=Off\nsession.cookie_httponly=1",
+      "why_might_not_be_vulnerable": "These settings matter only after a code-execution primitive exists; PHP-FPM already runs as the unprivileged 'application' user (conf/fpm-pool.conf:5-6) and the web root is /app/public.",
+      "preconditions": ["an additional RCE/LFI primitive"]
+    },
+    {
+      "id": "CFG-09",
+      "severity": "low",
+      "confidence": "high",
+      "title": "FPM pool passes the container environment to workers and exposes status/ping paths in config (not routed by the shipped vhost)",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "conf/fpm-pool.conf:10 pm.status_path=/fpm-status, :16 clear_env=no, :20 ping.path=/fpm-ping",
+        "EVID_CFG_RUNTIME_SETTING": "clear_env=no means every container env var is visible through getenv()/$_ENV in PHP",
+        "EVID_CFG_IMPACT_SCOPE": "ARM64 image only (Dockerfile-ARM64:22 copies conf/fpm-pool.conf); the webdevops image keeps its own pool file",
+        "EVID_CFG_SECURITY_SWITCH": "conf/default.conf has no /fpm-status or /fpm-ping location, so requests fall through to the front controller (verified by reading the whole file)"
+      },
+      "code": "// conf/fpm-pool.conf:10,16\npm.status_path = /fpm-status\nclear_env = no",
+      "why_might_not_be_vulnerable": "Status/ping are unreachable without a matching nginx location or a wider listener, and environment leakage requires an existing info-disclosure primitive.",
+      "preconditions": ["a future nginx/proxy rule that forwards /fpm-status", "or an existing env-dump primitive"]
+    },
+    {
+      "id": "CFG-10",
+      "severity": "low",
+      "confidence": "medium",
+      "title": "Compose publishes 9000/tcp even though php-fpm binds loopback, and the container masters run as root",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "docker-compose.yml:6-8 (`- \"9000:9000\"`); conf/fpm-pool.conf:8 `listen = 127.0.0.1:9000`",
+        "EVID_CFG_RUNTIME_SETTING": "config/fpm-pool.conf is not used by the webdevops image; verified there /usr/local/etc/php-fpm.d/application.conf also has listen = 127.0.0.1:9000",
+        "EVID_CFG_IMPACT_SCOPE": "host port 9000 is bound by the container but nothing listens on non-loopback addresses",
+        "EVID_CFG_SECURITY_SWITCH": "conf/supervisord.conf:3 user=root, :10 and :21 run php-fpm/nginx masters as root; workers drop to 'application'"
+      },
+      "code": "# docker-compose.yml:6-8\nports:\n  - \"80:80\"\n  - \"9000:9000\"",
+      "why_might_not_be_vulnerable": "Because FPM listens on 127.0.0.1 only, the published port is unreachable today; the finding is a latent footgun (and unnecessary attack-surface declaration), not an open FastCGI exposure.",
+      "preconditions": ["a future change to the FPM listen address"]
+    },
+    {
+      "id": "CFG-11",
+      "severity": "low",
+      "confidence": "high",
+      "title": "Mail failure handling leaves misleading config paths and surfaces raw SMTP errors",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": ".env.example:51-57 sets MAIL_ENCRYPTION=ssl but config/mail.php:25-35 only reads scheme/host/port/username/password; MAIL_SCHEME is absent from .env.example",
+        "EVID_CFG_RUNTIME_SETTING": "app/Service/MailConfigService.php:15-16 maps the admin 'encryption' field correctly (ssl->smtps), so the env path and the admin path disagree",
+        "EVID_CFG_IMPACT_SCOPE": "app/Jobs/MailSend.php:23 (tries=2), :30 (timeout 30), :58-65 (invalid recipient logged with the address), app/Admin/Forms/EmailTest.php:40-45 (raw exception message returned to the admin UI)",
+        "EVID_CFG_SECURITY_SWITCH": "config/queue.php failed-job database driver + failed_jobs table (install.sql:343-353) records exhausted attempts"
+      },
+      "code": "// app/Admin/Forms/EmailTest.php:40-45\ncatch(\\Exception $e)\n{\n    return $this->response()->error($e->getMessage());\n}",
+      "why_might_not_be_vulnerable": "The exception text is only shown to an authenticated admin, and a failed mail job never blocks payment completion (the dispatch is fire-and-forget). The ignore-MAIL_ENCRYPTION mismatch mainly causes availability/plaintext-transport surprises.",
+      "preconditions": ["SMTP configured through .env only (not the admin form)"]
+    },
+    {
+      "id": "CFG-12",
+      "severity": "low",
+      "confidence": "high",
+      "title": "Stripe charge endpoint returns raw exception text and is a state-changing GET",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "routes/common/pay.php:35-38 (all Stripe endpoints are GET); app/Http/Middleware/VerifyCsrfToken.php:21-26 (only pay/*/notify_url and pay/*/return_url are exempt)",
+        "EVID_CFG_RUNTIME_SETTING": "app/Http/Controllers/Pay/StripeController.php:524-558 - charge() consumes stripeToken/orderid, calls Stripe\\Charge::create (:544) and returns $e->getMessage() (:554-556)",
+        "EVID_CFG_IMPACT_SCOPE": "anonymous storefront; reached via pay-gateway redirect",
+        "EVID_CFG_SECURITY_SWITCH": "optional order-context HMAC validation at :536 via PayController::validateOrderContextToken (app/Http/Controllers/PayController.php:132-168)"
+      },
+      "code": "// app/Http/Controllers/Pay/StripeController.php:554-556\n} catch (\\Exception $e) {\n    return $e->getMessage();\n}",
+      "why_might_not_be_vulnerable": "CSRF middleware does not protect GET requests in any case, so the exemption list is irrelevant here; charging requires a valid Stripe token, the amount is computed server-side from the order (bcmul at :545), and the order-context token (when present) binds the request to the session-order pair. Error text is Stripe-side detail.",
+      "preconditions": ["stripe gateway enabled"]
+    },
+    {
+      "id": "CFG-13",
+      "severity": "info",
+      "confidence": "high",
+      "title": "Seeded admin password hash is deliberately non-guessable, so the forced-rotation control only covers legacy admin/admin installs",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "database/sql/install.sql:246 (seeded hash, not reproduced here; replaced in commit 71777e0)",
+        "EVID_CFG_RUNTIME_SETTING": "app/Admin/Controllers/AuthController.php:35-37 and app/Http/Middleware/ForceAdminPasswordChange.php:36-39 test password_verify('admin', ...) only",
+        "EVID_CFG_IMPACT_SCOPE": "installs imported directly from install.sql; the installer path is safer because HomeController.php:150-152 enforces a >=10 character password",
+        "EVID_CFG_SECURITY_SWITCH": "docker read-only check: password_verify('admin', seeded hash) === false"
+      },
+      "code": "// app/Http/Middleware/ForceAdminPasswordChange.php:36-39\n$user = $guard->user();\nif ($user && password_verify('admin', (string) $user->password)) {\n    session()->put('force_admin_password_change', true);\n}",
+      "why_might_not_be_vulnerable": "No guessable default credential is shipped, so this is an operational (locked-out admin) rather than a security defect; it is recorded so later phases do not claim a live 'admin/admin' default.",
+      "preconditions": []
+    },
+    {
+      "id": "CFG-14",
+      "severity": "info",
+      "confidence": "high",
+      "title": "install.sql yipay seed uses is_open=2 and leaves the README default-enablement claim inconsistent",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "database/sql/install.sql:515 - yipay 'alipay' row has is_open=2 (neither STATUS_OPEN=1 nor STATUS_CLOSE=0)",
+        "EVID_CFG_RUNTIME_SETTING": "app/Models/BaseModel.php:17-18 defines only 1/0; app/Service/PayService.php:30-33 requires exactly 1",
+        "EVID_CFG_IMPACT_SCOPE": "README.md:24 states only yipay is enabled by default; after a fresh import the front end instead offers the other placeholder gateways and hides this yipay row until upgrade-php83.sql:65-66 normalises it",
+        "EVID_CFG_SECURITY_SWITCH": "The same inconsistency is what keeps CFG-02's placeholder-key gateways live on fresh installs"
+      },
+      "code": "// database/sql/install.sql:515\nINSERT INTO `pays` VALUES (14, '易支付-支付宝', 'alipay', 1, 1, '商户号', '', '密钥', '/pay/yipay', 2, ...);",
+      "why_might_not_be_vulnerable": "No security control is bypassed by the stray value; it is a data/expectation mismatch that materially weakens the documented default posture.",
+      "preconditions": []
+    },
+    {
+      "id": "CFG-15",
+      "severity": "info",
+      "confidence": "medium",
+      "title": "Local container images predate the working tree entrypoint (install.lock test uses -d instead of -e)",
+      "evidence": {
+        "EVID_CFG_CONFIG_LOCATION": "conf/start.sh:28 `[ ! -e /app/install.lock ]`",
+        "EVID_CFG_RUNTIME_SETTING": "dujiaoka-php83-arm64-final:latest /start.sh:28 contains `[ ! -d /app/install.lock ]`",
+        "EVID_CFG_IMPACT_SCOPE": "any dynamic verification performed against the prebuilt local images",
+        "EVID_CFG_SECURITY_SWITCH": "A directory named install.lock would satisfy -e but not -d, so image behaviour and source behaviour differ"
+      },
+      "code": "# repo conf/start.sh:28\nif [ \"$INSTALL\" != \"true\" ] && [ ! -e /app/install.lock ]; then\n# image /start.sh:28\nif [ \"$INSTALL\" != \"true\" ] && [ ! -d /app/install.lock ]; then",
+      "why_might_not_be_vulnerable": "This is an evidence-quality note, not an application vulnerability; later phases must build fresh images before trusting runtime results.",
+      "preconditions": []
+    }
+  ],
+  "handoffs": [
+    {"to": "sqli_auditor", "reason": "Installer accepts arbitrary DB host/port/credentials and then issues DB::unprepared on install.sql (HomeController.php:160-204); confirm no injection surface into the generated .env values beyond the CRLF whitelist at :138-145."},
+    {"to": "ssrf_auditor", "reason": "Installer DB/Redis connection attempts (HomeController.php:168-182) let an anonymous caller make the server connect to arbitrary internal hosts/ports when the lock is absent."},
+    {"to": "csrf_auditor", "reason": "CSRF exemption list is minimal (app/Http/Middleware/VerifyCsrfToken.php:21-26), but pay/stripe/charge is a state-changing GET (routes/common/pay.php:35-38) and SameSite=Lax defaults change the cross-site behaviour."},
+    {"to": "authz_auditor", "reason": "ForceAdminPasswordChange only redirects when session('force_admin_password_change') is set (app/Http/Middleware/ForceAdminPasswordChange.php:41-45); verify no admin route escapes the ['web','admin','admin.force-password'] chain configured in config/admin.php:74."},
+    {"to": "crypto_auditor", "reason": "All supported gateways sign with md5(concatenated fields + secret) (YipayController.php:41/94, VpayController.php:43/79, MapayController.php:45/75, PaysapiController.php:101, TokenPayController.php:67, EpusdtController.php:67) and pays secrets are encrypted with an APP_KEY-backed cast; assess key management and the md5-vs-HMAC choice under the gateway protocols."},
+    {"to": "logging_auditor", "reason": "notify rejections log order_sn/trade_no (YipayController.php:103-106) and MailSend logs recipient addresses (app/Jobs/MailSend.php:61-63); LOG_LEVEL=warning (.env.example:8) vs hardcoded 'debug' channel levels (config/logging.php:47,53)."},
+    {"to": "infoleak_auditor", "reason": "StripeController.php:554-556 and app/Admin/Forms/EmailTest.php:40-45 return raw exception messages; APP_DEBUG default is false (.env.example:4) and ignition is require-dev only."}
+  ],
+  "uncertainties": [
+    "Whether any deployment ships without install.lock cannot be determined statically; the exposure in CFG-01 is conditional on that state.",
+    "The plaintext of the seeded admin hash is unknown (password_verify tests for common values returned false) - treated as non-guessable, not as a known default credential.",
+    "MAIL_ENCRYPTION-ignored behaviour (CFG-11) was derived from config/mail.php:25-35 (env('MAIL_SCHEME') only); no SMTP connection was attempted in static mode.",
+    "Local images dujiaoka:2.1.0-php83 and dujiaoka-php83-arm64-final:latest differ from conf/start.sh (CFG-15); docker-derived runtime facts (php -i, pool listen address, vhost includes) were used only for base-image defaults, not as proof of the current entrypoint logic.",
+    "CSRF token acquisition for the installer (needed for CFG-01 exploitation) was inferred from the 'web' middleware group (app/Http/Kernel.php:34-43 + RouteServiceProvider.php:61-63); no HTTP request was sent."
+  ]
+}

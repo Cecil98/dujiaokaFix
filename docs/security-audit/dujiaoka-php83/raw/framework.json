@@ -1,0 +1,380 @@
+{
+  "artifact": "framework",
+  "meta": {
+    "recon_kind": "framework",
+    "target": ".",
+    "mode": "static",
+    "generated_at_utc": "2026-02-06T00:00:00Z",
+    "generated_by": "php-audit-recon (framework) on pi",
+    "guidance_consumed": [
+      "tools/php-audit-skills/shared/anti_hallucination.md",
+      "tools/php-audit-skills/shared/data_contracts.md",
+      "tools/php-audit-skills/shared/evidence_contract.md",
+      "tools/php-audit-skills/shared/sink_definitions.md",
+      "tools/php-audit-skills/shared/php_specific_patterns.md",
+      "tools/php-audit-skills/shared/framework_patterns.md",
+      "tools/php-audit-skills/teams/team2/context_extractor.md",
+      "tools/php-audit-skills/teams/team2/dep_scanner.md"
+    ],
+    "tooling_note": "Host has no php/composer binaries (`php: command not found`, `composer: command not found`). All runtime checks were executed inside Docker images per task instructions. No application code, config, database or tests were modified.",
+    "secrets_policy": "No .env values, APP_KEY, DB/Redis credentials, cookies or API keys are reproduced in this artifact. Only key names, template defaults that are non-secret booleans/enums, and observed runtime state flags are reported."
+  },
+
+  "runtime": {
+    "php_constraint_declared": {
+      "composer_json": "^8.3",
+      "file": "composer.json:17",
+      "composer_lock_platform": "^8.3",
+      "lock_file": "composer.lock (top-level \"platform\": {\"php\": \"^8.3\"})"
+    },
+    "php_observed": {
+      "version": "8.3.36 (cli, NTS)",
+      "sapi_checked": "cli and php-fpm runtime of image dujiaoka:2.1.0-php83",
+      "evidence": "docker run --rm webdevops/php:8.3 php -v => PHP 8.3.36; same version inside dujiaoka:2.1.0-php83",
+      "opcache": "Zend OPcache 8.3.36 loaded"
+    },
+    "extensions_required_by_lock": [
+      "ext-ctype", "ext-curl", "ext-dom", "ext-fileinfo", "ext-filter", "ext-gd",
+      "ext-hash", "ext-iconv", "ext-json", "ext-libxml", "ext-mbstring", "ext-openssl",
+      "ext-pcre", "ext-phar", "ext-session", "ext-tokenizer", "ext-xmlreader",
+      "ext-xmlwriter", "ext-zip"
+    ],
+    "extensions_requirement_sources": "composer.lock packages[].require aggregated (e.g. ext-gd from mews/captcha + simplesoftwareio/simple-qrcode, ext-mbstring from laravel/framework, ext-zip from box/spout)",
+    "platform_check": {
+      "command": "composer check-platform-reqs --no-interaction",
+      "result": "all requirements success on PHP 8.3.36; php 8.3.36 success",
+      "evidence": "docker run --rm -v $PWD:/app webdevops/php:8.3 composer check-platform-reqs"
+    },
+    "extensions_loaded_in_shipped_image": {
+      "image": "dujiaoka:2.1.0-php83",
+      "loaded": ["pdo_mysql", "mysqli", "mbstring", "gd", "zip", "intl", "bcmath", "curl", "redis", "sodium", "exif", "fileinfo", "openssl", "ctype", "json", "tokenizer", "xml", "dom", "imagick"],
+      "evidence": "php -r loop over extension_loaded() inside the image; all returned 1"
+    },
+    "ini_effective_in_project_runtime": {
+      "source_file": "conf/php.ini:1-8",
+      "values": {
+        "date.timezone": "Asia/Shanghai",
+        "memory_limit": "256M",
+        "upload_max_filesize": "50M",
+        "post_max_size": "50M",
+        "max_execution_time": "300",
+        "cgi.fix_pathinfo": "0",
+        "expose_php": "Off",
+        "session.cookie_httponly": "1"
+      },
+      "installed_as": "Dockerfile:20 -> /usr/local/etc/php/conf.d/zz-dujiaoka.ini",
+      "verified_present_in_image": "dujiaoka:2.1.0-php83 (/usr/local/etc/php/conf.d/zz-dujiaoka.ini exists, content matches conf/php.ini)",
+      "not_overridden": [
+        "display_errors (inherited from base image/webdevops default)",
+        "allow_url_include (inherited; observed Off in base image)",
+        "session.cookie_secure (not set in conf/php.ini; app-level env SESSION_SECURE_COOKIE, default false in .env.example:69)",
+        "session.same_site / session.use_strict_mode (not set)",
+        "disable_functions (no value)",
+        "open_basedir (no value)"
+      ],
+      "handoff": "Session/cookie hardening is owned by security-config and session recon kinds; recorded here only as environment context."
+    },
+    "php_files": {
+      "app_php_files": 107,
+      "excluding_vendor_php_files": 242,
+      "lint": {
+        "command": "php -l over app/ routes/ config/ database/ bootstrap/",
+        "linted": 137,
+        "failed": 0,
+        "evidence": "no parse errors under PHP 8.3.36"
+      }
+    }
+  },
+
+  "framework": {
+    "name": "Laravel",
+    "version": "12.70.1",
+    "version_evidence": [
+      "composer.lock packages[] laravel/framework v12.70.1",
+      "docker run -v $PWD:/app webdevops/php:8.3 php artisan --version => 'Laravel Framework 12.70.1'",
+      "php artisan about => Laravel Version 12.70.1 / PHP Version 8.3.36 / Composer Version 2.10.3"
+    ],
+    "constraint_declared": "^12.69 (composer.json:22)",
+    "bootstrap_style": {
+      "file": "bootstrap/app.php:17-45",
+      "notes": "Legacy Laravel <=10 style bootstrap: explicit singletons for Illuminate\\Contracts\\Http\\Kernel (App\\Http\\Kernel), Console Kernel and ExceptionHandler (bootstrap/app.php:28-42). Not the Laravel 11+ fluent bootstrap/app.php style.",
+      "http_kernel": "app/Http/Kernel.php"
+    },
+    "global_middleware": {
+      "file": "app/Http/Kernel.php:21-29",
+      "stack": [
+        "App\\Http\\Middleware\\TrustProxies",
+        "Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance",
+        "Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize",
+        "App\\Http\\Middleware\\TrimStrings",
+        "Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull",
+        "App\\Http\\Middleware\\DujiaoSystem"
+      ]
+    },
+    "middleware_groups": {
+      "file": "app/Http/Kernel.php:33-55",
+      "web": [
+        "App\\Http\\Middleware\\EncryptCookies",
+        "Illuminate\\Cookie\\Middleware\\AddQueuedCookiesToResponse",
+        "Illuminate\\Session\\Middleware\\StartSession",
+        "Illuminate\\View\\Middleware\\ShareErrorsFromSession",
+        "App\\Http\\Middleware\\VerifyCsrfToken",
+        "Illuminate\\Routing\\Middleware\\SubstituteBindings",
+        "App\\Http\\Middleware\\SecurityHeaders"
+      ],
+      "api": ["throttle:60,1", "Illuminate\\Routing\\Middleware\\SubstituteBindings"],
+      "note": "Illuminate\\Session\\Middleware\\AuthenticateSession is commented out (app/Http/Kernel.php:39), so session id is not re-verified against password hash on each request."
+    },
+    "middleware_aliases": {
+      "file": "app/Http/Kernel.php:60-76",
+      "custom": ["dujiaoka.boot => DujiaoBoot", "dujiaoka.pay_gate_way => PayGateWay", "install.check => InstallCheck", "admin.force-password => ForceAdminPasswordChange"],
+      "stock": ["auth", "auth.basic", "bindings", "cache.headers", "can", "guest", "password.confirm", "signed", "throttle", "verified"]
+    },
+    "admin_framework": {
+      "package": "dcat/laravel-admin",
+      "version": "v2.2.5",
+      "require_in_composer_json": "2.2.5 (exact, composer.json:19)",
+      "source": "VCS fork https://github.com/Cecil98/dcat-admin.git @ 8ff1f8225351824f454f57388e8be812e3870407 (composer.json:10-14, composer.lock packages[] dcat/laravel-admin.source)",
+      "declared_platform_requirements": "php >=7.1.0, laravel/framework ~5.5|~6.0|~7.0|~8.0|~9.0|~10.0|~11.0|~12.0, doctrine/dbal ^2.6|^3.0|^4.0 (composer.lock)",
+      "route_prefix_config": "config/admin.php:70 -> env('ADMIN_ROUTE_PREFIX', 'admin'); same value duplicated in vendor/dcat/laravel-admin/config/admin.php:70",
+      "service_provider": "Dcat\\Admin\\AdminServiceProvider (bootstrap/cache/packages.php)",
+      "admin_middleware": ["admin", "admin.force-password", "Dcat\\Admin\\Http\\Middleware\\Application:admin"]
+    },
+    "providers_registered": {
+      "file": "bootstrap/cache/services.php",
+      "count_sampled": 27,
+      "app_providers": ["App\\Providers\\AppServiceProvider", "App\\Providers\\AuthServiceProvider", "App\\Providers\\BroadcastServiceProvider", "App\\Providers\\EventServiceProvider", "App\\Providers\\RouteServiceProvider"],
+      "package_providers": ["Dcat\\Admin\\AdminServiceProvider", "Jenssegers\\Agent\\AgentServiceProvider", "Laravel\\Tinker\\TinkerServiceProvider", "Mews\\Captcha\\CaptchaServiceProvider", "Carbon\\Laravel\\ServiceProvider"],
+      "note": "bootstrap/cache/services.php and packages.php are committed-generated cache files present in the working tree; they must be regenerated after dependency changes (Dockerfile relies on composer post-autoload-dump `artisan package:discover`, composer.json:70-72)."
+    },
+    "route_surface_summary": {
+      "command": "php artisan route:list --json",
+      "total_routes": 139,
+      "note": "Full route/auth mapping is out of scope for this artifact (see routes-auth recon). This summary is only environment evidence that the router boots and resolves controllers.",
+      "route_files": ["routes/web.php:17-23 (globs routes/common/*.php)", "routes/common/web.php", "routes/common/pay.php", "routes/api.php", "routes/channels.php", "routes/console.php"],
+      "admin_routes": 95,
+      "admin_route_prefix_observed": "admin",
+      "middleware_usage_counts": {
+        "web": 138,
+        "admin": 95,
+        "Dcat\\Admin\\Http\\Middleware\\Application:admin": 95,
+        "admin.force-password": 95,
+        "dujiaoka.pay_gate_way": 25,
+        "dujiaoka.boot": 11,
+        "install.check": 2,
+        "api": 1,
+        "auth:api": 1
+      }
+    },
+    "debug_and_env_state": {
+      "config_defaults": "config/app.php:31 env('APP_ENV','production'), config/app.php:44 (bool) env('APP_DEBUG', false)",
+      "template_defaults": ".env.example:2 APP_ENV=production, .env.example:4 APP_DEBUG=false (safe defaults)",
+      "observed_working_tree_state": "php artisan about (repo mounted in webdevops/php:8.3) reports Environment = local and Debug Mode = ENABLED, Config/Events/Routes/Views NOT CACHED",
+      "note": "The audit working tree .env is a development configuration. Production images (Dockerfile:9, Dockerfile-ARM64:31) run `composer install --no-dev` and Dockerfile-ARM64:34 removes /app/.env, so production debug state depends on the operator-supplied .env mounted by docker-compose.yml:11."
+    },
+    "installer_surface": {
+      "middleware": "app/Http/Middleware/InstallCheck.php:17-23 — redirects to / when install.lock exists, otherwise lets the request through",
+      "routes": "routes/common/web.php:37-41 (GET install -> HomeController@install, POST do-install -> HomeController@doInstall)",
+      "lock_creation": "Dockerfile:14 writes /app/install.lock when INSTALL != true and the lock is absent",
+      "note": "Installer reachability is therefore conditional on install.lock presence; detailed auth assessment belongs to routes-auth recon."
+    }
+  },
+
+  "packages": {
+    "lock_present": true,
+    "lock_content_hash": "9d710bb32c186b2445b8cc2d6d6eba1e",
+    "minimum_stability": "stable",
+    "stability_flags": {},
+    "production_packages": 96,
+    "dev_packages": 36,
+    "vendor_tracked_in_git": false,
+    "vendor_ignore_evidence": ".gitignore:6 /vendor ; `git ls-files vendor | wc -l` = 0",
+    "composer_validate": "valid, one warning: exact version constraint dcat/laravel-admin 2.2.5 (see risks)",
+    "composer_audit": {
+      "command": "composer audit --format=json --no-interaction (inside webdevops/php:8.3 with repo mounted)",
+      "advisories": [],
+      "abandoned": {"box/spout": null},
+      "caveat": "Empty advisories means no match in the Composer/Packagist advisory database reachable from this host; it is not proof that the fork dcat/laravel-admin (not on Packagist) or the Alpine system packages are free of issues."
+    },
+    "key_packages": [
+      {"name": "laravel/framework", "version": "v12.70.1", "scope": "prod", "note": "constraint ^12.69"},
+      {"name": "dcat/laravel-admin", "version": "v2.2.5", "scope": "prod", "note": "third-party VCS fork Cecil98/dcat-admin, ref 8ff1f82"},
+      {"name": "dcat/easy-excel", "version": "1.1.0", "scope": "prod", "note": "pulls abandoned box/spout"},
+      {"name": "box/spout", "version": "v3.3.0", "scope": "prod", "note": "abandoned per composer audit"},
+      {"name": "laravel/tinker", "version": "v2.11.1", "scope": "prod", "note": "psy/psysh v0.12.24 also prod — interactive code execution surface if a route/console is exposed"},
+      {"name": "mews/captcha", "version": "3.5.1", "scope": "prod", "note": "requires ext-gd, uses image generation"},
+      {"name": "xhat/payjs-laravel", "version": "1.6.0", "scope": "prod", "note": "low-maintenance third-party payment SDK"},
+      {"name": "stripe/stripe-php", "version": "v18.2.0", "scope": "prod"},
+      {"name": "guzzlehttp/guzzle", "version": "7.16.0", "scope": "prod", "note": "HTTP client used for payment gateways -> SSRF surface"},
+      {"name": "intervention/image", "version": "4.4.0", "scope": "prod", "note": "upload image processing"},
+      {"name": "league/flysystem", "version": "3.36.0", "scope": "prod"},
+      {"name": "monolog/monolog", "version": "3.12.1", "scope": "prod"},
+      {"name": "nesbot/carbon", "version": "3.15.0", "scope": "prod"},
+      {"name": "doctrine/dbal", "version": "4.5.0", "scope": "prod"},
+      {"name": "symfony/http-kernel", "version": "v7.4.21", "scope": "prod"},
+      {"name": "symfony/http-foundation", "version": "v7.4.21", "scope": "prod"},
+      {"name": "symfony/process", "version": "v7.4.21", "scope": "prod", "note": "process execution surface"},
+      {"name": "vlucas/phpdotenv", "version": "v5.7.0", "scope": "prod"},
+      {"name": "spatie/laravel-ignition", "version": "2.12.1", "scope": "dev", "note": "registers _ignition/* routes when installed — see risks"},
+      {"name": "spatie/ignition", "version": "1.16.0", "scope": "dev"},
+      {"name": "phpunit/phpunit", "version": "11.5.57", "scope": "dev"},
+      {"name": "nunomaduro/collision", "version": "8.9.5", "scope": "dev"},
+      {"name": "fakerphp/faker", "version": "v1.24.1", "scope": "dev"},
+      {"name": "mockery/mockery", "version": "1.6.15", "scope": "dev"}
+    ],
+    "symfony_major_line": "7.4.x (Symfony 7 requires PHP >= 8.2, compatible with the ^8.3 constraint)",
+    "version_range_notes": [
+      "composer.json:22 ^12.69 vs installed 12.70.1 — within range",
+      "composer.json:19 pins dcat/laravel-admin to exact 2.2.5 while the source is a mutable git fork: the commit is only frozen in composer.lock, so `composer update` can silently move to a different fork commit (see risks)"
+    ]
+  },
+
+  "docker_and_images": {
+    "dockerfile_debian": {
+      "file": "Dockerfile",
+      "base_image": "webdevops/php-nginx:8.3 (Dockerfile:1) — mutable tag, no digest pin",
+      "php_from_base": "8.3.36 observed in the derived image",
+      "steps_of_interest": [
+        "Dockerfile:7-9 COPY . /app + composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader (runs as image default user)",
+        "Dockerfile:12-16 generates /app/start.sh which (a) creates install.lock when INSTALL!=true and (b) starts `php artisan queue:work --tries=3` as user application, then execs supervisord",
+        "Dockerfile:19 installs conf/dujiaoka-nginx.conf as /opt/docker/etc/nginx/vhost.common.d/20-dujiaoka-security.conf",
+        "Dockerfile:20 installs conf/php.ini as /usr/local/etc/php/conf.d/zz-dujiaoka.ini",
+        "Dockerfile:22-27 ownership/permission normalisation; storage, bootstrap/cache, public/uploads 0775 and application-owned"
+      ]
+    },
+    "dockerfile_arm64": {
+      "file": "Dockerfile-ARM64",
+      "base_image": "alpine:3.20 (Dockerfile-ARM64:1) — mutable tag, no digest pin",
+      "php_packages": "apk php83, php83-fpm, php83-opcache, php83-{mysqli,pdo_mysql,bcmath,gd,zip,intl,dom,xml,xmlreader,xmlwriter,simplexml,ctype,session,tokenizer,fileinfo,mbstring,curl,openssl,phar,pcntl,iconv,sodium}, php83-pecl-redis, php83-pecl-imagick (Dockerfile-ARM64:10-14) — patch level drifts with Alpine repo",
+      "composer_source": "COPY --from=composer:2 (Dockerfile-ARM64:27) — unpinned tag",
+      "note": "Dockerfile-ARM64:31 composer install --no-dev; Dockerfile-ARM64:34 removes /app/.env so the image ships without any environment configuration"
+    },
+    "compose": {
+      "files": ["docker-compose.yml", "docker-compose.arm64.yml"],
+      "exposed_ports": "80:80 and 9000:9000 (docker-compose.yml:6-8) — fastcgi port 9000 is published to the host",
+      "mounted_files": [".env", "install.lock", "public/uploads (+ storage for arm64) (docker-compose.yml:9-15, docker-compose.arm64.yml:10-14)"],
+      "install_toggle": "INSTALL env default \"false\" (docker-compose.yml:18)"
+    },
+    "local_images_observed": [
+      {"image": "dujiaoka:2.1.0-php83", "state": "matches current Dockerfile: has zz-dujiaoka.ini in /usr/local/etc/php/conf.d AND 20-dujiaoka-security.conf; no /app/.env; no /app/install.lock; vendor 119M without dev packages"},
+      {"image": "dujiaoka-php83-final:latest", "state": "STALE relative to Dockerfile: has 20-dujiaoka-security.conf but zz-dujiaoka.ini absent"},
+      {"image": "dujiaoka-php83-test:latest", "state": "STALE relative to Dockerfile: has 20-dujiaoka-security.conf but zz-dujiaoka.ini absent"},
+      {"image": "webdevops/php:8.3", "state": "base used for static/runtime checks"},
+      {"image": "webdevops/php-nginx:8.3", "state": "base declared by Dockerfile:1"}
+    ],
+    "nginx_hardening": {
+      "file": "conf/dujiaoka-nginx.conf:1-33",
+      "controls": ["server_tokens off", "X-Frame-Options SAMEORIGIN", "X-Content-Type-Options nosniff", "Referrer-Policy strict-origin-when-cross-origin", "Permissions-Policy", "location ^~ /uploads/ denies *.php and dotfiles", "location ^~ /storage/ denies *.php and dotfiles", "dotfile deny with .well-known exception"],
+      "verified_in_image": "dujiaoka:2.1.0-php83 /opt/docker/etc/nginx/vhost.common.d/20-dujiaoka-security.conf present",
+      "gap_to_confirm_elsewhere": "No `location ~ \\.php$` execution allow-list beyond the webdevops default 10-php.conf; uploads/storage protection depends on this vhost include being loaded"
+    }
+  },
+
+  "bootability": {
+    "bootable": true,
+    "confidence": "high",
+    "checks": [
+      {"check": "php artisan --version (repo mounted in webdevops/php:8.3)", "result": "Laravel Framework 12.70.1, exit 0"},
+      {"check": "php artisan about", "result": "full runtime report rendered (Laravel 12.70.1 / PHP 8.3.36 / Composer 2.10.3 / drivers resolved)"},
+      {"check": "php artisan route:list --json (repo mounted)", "result": "139 routes serialised; includes _ignition routes because dev dependencies exist in the working-tree vendor/"},
+      {"check": "php artisan route:list --json (shipped prod image dujiaoka:2.1.0-php83)", "result": "139 routes serialised; _ignition route count = 0; admin-prefix routes = 95"},
+      {"check": "php -l over 137 project PHP files", "result": "0 failures on PHP 8.3.36"},
+      {"check": "composer check-platform-reqs", "result": "all platform requirements satisfied"},
+      {"check": "composer validate", "result": "valid (1 warning about exact dcat version constraint)"}
+    ],
+    "not_verified": [
+      "HTTP request/response smoke test (no running web server + database in this static recon; MODE=static)",
+      "Database connectivity / migration state (mysql driver configured, no DB reached)",
+      "Behaviour of payment gateway flows (out of scope here)"
+    ]
+  },
+
+  "risks": [
+    {
+      "id": "FW-R1",
+      "severity": "high",
+      "title": "Working-tree runtime has debug mode + local environment enabled while spatie/laravel-ignition (dev) is installed, exposing _ignition routes that can execute 'solutions'",
+      "evidence": "`php artisan about` on the repo-mounted container reports Environment=local, Debug Mode=ENABLED; `php artisan route:list --json` in the same container lists _ignition/execute-solution, _ignition/update-config and _ignition/health-check. vendor/spatie/laravel-ignition/src/IgnitionServiceProvider.php:61 calls registerRoutes() unconditionally, :211-213 loadRoutesFrom(ignition-routes.php) which registers ExecuteSolutionController/UpdateConfigController under middleware RunnableSolutionsEnabled (vendor/.../ignition-routes.php:9-22); vendor/.../Http/Middleware/RunnableSolutionsEnabled.php:12-15 only aborts 404 when RunnableSolutionsGuard::check() fails (debug+local gated).",
+      "why_it_may_not_be_exploitable": "Production images install with --no-dev (Dockerfile:9, Dockerfile-ARM64:31); route:list inside dujiaoka:2.1.0-php83 shows 0 _ignition routes and vendor/spatie/laravel-ignition is absent from the image. Exploitation requires an operator to install dev dependencies and enable debug in a reachable environment.",
+      "recommendation": "Keep APP_ENV=production/APP_DEBUG=false in every reachable deployment (.env.example:2,4 defaults are safe) and never run `composer install` without --no-dev on production hosts. Re-verify with `php artisan route:list | grep _ignition` on deployed instances.",
+      "status": "unverified-dynamic"
+    },
+    {
+      "id": "FW-R2",
+      "severity": "medium",
+      "title": "Admin panel is a dcat/laravel-admin fork consumed from a mutable third-party git repository, pinned only by composer.lock reference",
+      "evidence": "composer.json:10-14 adds repository https://github.com/Cecil98/dcat-admin and composer.json:19 requires exact '2.2.5'; composer.lock records dcat/laravel-admin source reference 8ff1f8225351824f454f57388e8be812e3870407. The fork is not covered by Packagist advisories (`composer audit` returns advisories: [] for the whole tree) and `composer validate` warns about the exact version constraint.",
+      "why_it_may_not_be_exploitable": "The currently installed commit is frozen in composer.lock and the shipped image is built from that lock, so today's artifacts are deterministic. Risk materialises on `composer update` or on losing the lock.",
+      "recommendation": "Pin the fork by commit (`dev-master#<sha>`) or vendor the source; review fork diffs versus upstream 2.2.5 before upgrades; track advisories for the fork manually.",
+      "status": "supply-chain"
+    },
+    {
+      "id": "FW-R3",
+      "severity": "medium",
+      "title": "Base images and PHP patch level are unpinned; some locally built images are stale relative to the Dockerfile (php hardening ini missing)",
+      "evidence": "Dockerfile:1 `FROM webdevops/php-nginx:8.3` (mutable tag, no digest); Dockerfile-ARM64:1 `FROM alpine:3.20` with `apk add php83-*` packages (Dockerfile-ARM64:10-14) so the PHP patch level floats with the Alpine repo; Dockerfile-ARM64:27 `COPY --from=composer:2` unpinned. `docker run dujiaoka-php83-final:latest ls /usr/local/etc/php/conf.d | grep dujiaoka` returns no zz-dujiaoka.ini although the nginx security include is present, while dujiaoka:2.1.0-php83 contains both — the -final/-test tags predate Dockerfile:20.",
+      "why_it_may_not_be_exploitable": "The image tag actually deployed (dujiaoka:2.1.0-php83) does contain the hardened php.ini. Reproducibility rather than immediate exploitability is the primary issue.",
+      "recommendation": "Pin base images by digest, rebuild and retag ALL published tags from the current Dockerfile, and add a CI assertion that zz-dujiaoka.ini + 20-dujiaoka-security.conf exist in the built image.",
+      "status": "supply-chain"
+    },
+    {
+      "id": "FW-R4",
+      "severity": "medium",
+      "title": "Project php.ini hardening is minimal: secure cookie flag, SameSite and use_strict_mode are not enforced at the PHP layer",
+      "evidence": "conf/php.ini:1-8 sets only expose_php=Off and session.cookie_httponly=1; no session.cookie_secure, session.samesite, session.use_strict_mode, display_errors or disable_functions entries. Application defaults: config/session.php:169 'secure' => env('SESSION_SECURE_COOKIE', null), config/session.php:197 'same_site' => env('SESSION_SAME_SITE','lax'), .env.example:69 SESSION_SECURE_COOKIE=false. Effective ini inside the base webdevops image (no project ini): session.cookie_httponly=Off, session.cookie_secure=Off, session.use_strict_mode=Off.",
+      "why_it_may_not_be_exploitable": "httponly is applied via the project ini and SameSite=lax is the framework default; missing Secure only matters when ADMIN_HTTPS/HTTPS termination is misconfigured, and Laravel's cookie encryption reduces tampering impact. Full determination belongs to security-config/session recon.",
+      "recommendation": "Add session.cookie_secure=1, session.samesite=Lax/Strict, session.use_strict_mode=1 to conf/php.ini (or document mandatory env values) and set SESSION_SECURE_COOKIE=true in HTTPS deployments.",
+      "status": "handoff security-config"
+    },
+    {
+      "id": "FW-R5",
+      "severity": "low",
+      "title": "Production defaults expose the dcat admin panel on the well-known /admin path when ADMIN_ROUTE_PREFIX is unset",
+      "evidence": "config/admin.php:70 'prefix' => env('ADMIN_ROUTE_PREFIX', 'admin'); the shipped image has no /app/.env (Dockerfile-ARM64:34, verified absent in dujiaoka:2.1.0-php83) and `php artisan route:list --json` inside that image shows 95 routes under the `admin` prefix with middleware admin + admin.force-password.",
+      "why_it_may_not_be_exploitable": "Admin routes are behind dcat's auth middleware plus a rate-limited login and forced password change; predictable path only aids discovery/scanning.",
+      "recommendation": "Require ADMIN_ROUTE_PREFIX to be set to a non-default value in production deployment docs and enforce it in deploy checks.",
+      "status": "config-surface"
+    },
+    {
+      "id": "FW-R6",
+      "severity": "low",
+      "title": "Abandoned dependency in the production tree (box/spout via dcat/easy-excel)",
+      "evidence": "`composer audit --format=json` output: \"abandoned\": {\"box/spout\": null}; composer.lock packages[] box/spout v3.3.0; required by dcat/easy-excel 1.1.0.",
+      "why_it_may_not_be_exploitable": "Abandonment is not a vulnerability by itself; no advisory currently matches, and the package is used for spreadsheet import/export.",
+      "recommendation": "Track replacements (openspout/openspout) and validate any user-supplied spreadsheet import path in the sink/dynamic phases.",
+      "status": "maintenance"
+    },
+    {
+      "id": "FW-R7",
+      "severity": "low",
+      "title": "Laravel AuthenticateSession middleware is disabled, so session IDs are not invalidated on password change",
+      "evidence": "app/Http/Kernel.php:39 shows `// \\Illuminate\\Session\\Middleware\\AuthenticateSession::class,` commented out inside the 'web' group.",
+      "why_it_may_not_be_exploitable": "Exploitation requires an already-stolen session cookie; framework default is also disabled. Impact is limited to post-password-change session retention.",
+      "recommendation": "Consider enabling AuthenticateSession or explicitly invalidating sessions on password change; confirm behaviour in the session recon phase.",
+      "status": "config-surface"
+    },
+    {
+      "id": "FW-R8",
+      "severity": "info",
+      "title": "docker-compose publishes PHP-FPM port 9000 on the host alongside HTTP 80",
+      "evidence": "docker-compose.yml:6-8 `ports: - \"80:80\" - \"9000:9000\"`.",
+      "why_it_may_not_be_exploitable": "FPM on 9000 is only reachable if the host firewall exposes it; FastCGI requires crafted SCRIPT_FILENAME requests (CVE class for exposed FPM). Whether it is reachable in practice depends on deployment firewall rules, which this static recon cannot verify.",
+      "recommendation": "Remove the 9000 mapping from the default compose file or bind it to 127.0.0.1; document firewall requirements.",
+      "status": "deployment"
+    }
+  ],
+
+  "handoffs": [
+    {"to": "routes-auth", "reason": "139 routes (95 under /admin, 25 dujiaoka.pay_gate_way, 11 dujiaoka.boot, 2 install.check, 1 auth:api must be mapped to auth levels; route files routes/common/*.php and routes/api.php)", "evidence": "php artisan route:list --json"},
+    {"to": "dependencies", "reason": "96 prod / 36 dev packages, dcat fork from VCS, abandoned box/spout; composer audit currently returns no advisories", "evidence": "composer.lock, composer audit --format=json"},
+    {"to": "security-config", "reason": "conf/php.ini, conf/dujiaoka-nginx.conf, config/session.php:169/182/197, config/app.php:31/44, .env key set (.env.example)", "evidence": "files cited above"},
+    {"to": "sinks", "reason": "Framework sink families to hunt: DB::raw/whereRaw (Laravel pattern in tools/php-audit-skills/shared/framework_patterns.md:22-34), {!! !!} Blade raw output, unserialize/phar, exec/process (symfony/process v7.4.21 present), Guzzle HTTP client (SSRF) for payment gateways, upload handling via intervention/image 4.4.0, dcat admin grid filters", "evidence": "composer.lock package set + framework_patterns.md"}
+  ],
+
+  "uncertainties": [
+    "[Needs Verification] Whether any deployed environment runs with dev dependencies installed: production images are clean (0 _ignition routes), but operator-built images were not inspected.",
+    "[Needs Verification] Whether the local tags dujiaoka-php83-final / dujiaoka-php83-test are still published anywhere; they are stale relative to Dockerfile:20 in this host's image store.",
+    "[Needs Verification] Runtime HTTP behaviour (headers, error pages, CSP) — not exercised because this recon runs in MODE=static without a live web server/DB.",
+    "[Needs Verification] The Alpine-based ARM64 image was not built here; its PHP patch level therefore only reflects the Dockerfile's apk instructions, not an observed build."
+  ]
+}

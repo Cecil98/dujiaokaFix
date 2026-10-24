@@ -1,0 +1,279 @@
+{
+  "artifact": "payment-authz-findings",
+  "audit_kind": "phase4-domain-audit-payment-authz",
+  "mode": "static",
+  "target": ".",
+  "domain": "payment-authz",
+  "branch": "upgrade/php83",
+  "generated_by": "php-audit-auditor (payment-authz domain, static source-to-sink audit)",
+  "method": "Each ITEM was re-traced in the current working tree with fresh reads (no memory of prior runs). No HTTP request was sent, no container was started, no payload was executed. Line numbers below were read from the current files.",
+  "guidance_consumed": [
+    "tools/php-audit-skills/shared/anti_hallucination.md",
+    "tools/php-audit-skills/shared/evidence_contract.md",
+    "tools/php-audit-skills/shared/sink_definitions.md",
+    "tools/php-audit-skills/shared/php_specific_patterns.md",
+    "tools/php-audit-skills/shared/severity_rating.md",
+    "tools/php-audit-skills/shared/OUTPUT_TEMPLATE.md",
+    "tools/php-audit-skills/shared/false_positive_patterns.md",
+    "tools/php-audit-skills/teams/team4/authz_auditor.md",
+    "tools/php-audit-skills/teams/team4/business_logic_auditor.md",
+    "tools/php-audit-skills/skills/auditors/authz_auditor_analyze.md",
+    "tools/php-audit-skills/skills/auditors/business_logic_auditor_analyze.md"
+  ],
+  "items_audited": [
+    "PQ-001",
+    "PQ-003",
+    "PQ-004"
+  ],
+  "environment_notes": [
+    "MODE=static: every finding is code-level confirmed; no EVID_*_RESPONSE evidence was obtained, therefore verdicts are 'confirmed-code-path' and never 'dynamically confirmed'.",
+    "No .env value was read or printed. The only secret-like literal referenced is the public placeholder shipped in database/sql/install.sql.",
+    "vendor/ was read read-only to prove framework semantics (Illuminate\\Http\\Request::has() / retrieveItem(), EncryptCookies).",
+    "Global gate: app/Http/Middleware/DujiaoBoot.php redirects the dujiaoka.boot routes to /install while install.lock is absent; all findings below assume a completed installation (install.lock present)."
+  ],
+  "findings": [
+    {
+      "id": "PQ-001",
+      "item_id": "PQ-001",
+      "title": "Default-enabled epay/yipay gateway ships the repository placeholder as its signing secret, so /pay/yipay/notify_url signatures are forgeable and an order can be completed without payment",
+      "severity": "critical",
+      "confidence": 0.72,
+      "verdict": "confirmed-code-path / conditionally-exploitable (requires the seeded placeholder secret to still be in place)",
+      "file": "database/sql/install.sql",
+      "line": 515,
+      "related_locations": [
+        "database/sql/install.sql:515,516,517 (pays id 14/15/16, merchant_pem = placeholder literal, pay_handleroute = '/pay/yipay')",
+        "database/sql/install.sql:539-540 (all pays disabled, then only '/pay/yipay' re-enabled => ids 14,15,16 open by default)",
+        "app/Http/Controllers/Pay/YipayController.php:59-107 (notifyUrl)",
+        "app/Http/Controllers/Pay/YipayController.php:82-95 (ksort + md5 + hash_equals)",
+        "app/Http/Controllers/Pay/YipayController.php:101 (completedOrder)",
+        "app/Service/OrderProcessService.php:385-435 (completedOrder: bccomp amount check, trade_no uniqueness, processAuto)",
+        "app/Models/Pay.php:15-19 (merchant_pem cast) + app/Casts/EncryptedOrPlaintext.php:17-30 (plaintext passthrough)",
+        "app/Service/PayService.php:60-66 (detail() filters is_open = STATUS_OPEN)",
+        "app/Http/Middleware/PayGateWay.php:17-20 (route-group middleware is a pass-through)",
+        "app/Http/Controllers/Home/HomeController.php:204 (DB::unprepared(file_get_contents(install.sql)) - the seed is imported verbatim, bypassing the Eloquent cast)"
+      ],
+      "source": "Anonymous GET /pay/yipay/notify_url with query parameters out_trade_no / trade_no / money / sign (and optional trade_status) -> $request->all() at app/Http/Controllers/Pay/YipayController.php:60. The attacker controls out_trade_no and money directly and can pick pays id 14/15/16 at checkout via the order-creation field payway (app/Http/Controllers/Home/OrderController.php:75 -> app/Http/Controllers/Home/OrderController.php:87 redirect to /bill/{orderSN}).",
+      "sink": "md5(sign_string . $payGateway->merchant_pem) compared with attacker-supplied $data['sign'] via hash_equals (app/Http/Controllers/Pay/YipayController.php:94-95), then order completion + card delivery via $this->orderProcessService->completedOrder($data['out_trade_no'], (float)$data['money'], $data['trade_no']) (app/Http/Controllers/Pay/YipayController.php:101 -> app/Service/OrderProcessService.php:418-434).",
+      "reachability": "Anonymous and single-request. routes/common/pay.php:28 registers Route::get('yipay/notify_url','YipayController@notifyUrl') inside the 'pay' prefix group whose only middleware is the no-op dujiaoka.pay_gate_way (app/Http/Kernel.php:70 -> app/Http/Middleware/PayGateWay.php:17-20). No auth, no CSRF (GET, and VerifyCsrfToken only guards unsafe verbs), no IP allow-list, no rate limit anywhere in the group.",
+      "preconditions": "1) install.lock present (installation finished via app/Http/Controllers/Home/HomeController.php:204, which imports install.sql verbatim). 2) pays id 14/15/16 still carry the seeded placeholder merchant_pem value from install.sql:515-517 - i.e. the operator enabled the default epay gateway but never replaced/omitted the placeholder secret. 3) The attacker knows its own order_sn and actual_price (both are rendered to the buyer on the bill page, resources/views/hyper/static_pages/bill.blade.php:16,30) and picks a fresh trade_no.",
+      "impact": "Complete payment bypass: the forged notification marks the attacker's own unpaid order as STATUS_COMPLETED and processAuto (app/Service/OrderProcessService.php:509-538) hands over the stored card secrets while marking them sold. Financial loss equals the order value; the victim is the store and its card inventory. The same request also works against another buyer's pending order (free completion of a third-party order), and trade_no idempotency (app/Service/OrderProcessService.php:411-416) does not stop it because the attacker chooses a unique value.",
+      "evidence": "EVID_CRYPTO_KEY_MANAGEMENT: database/sql/install.sql:515 - INSERT INTO `pays` VALUES (14,'易支付-支付宝','alipay',1,1,'商户号','','密钥','/pay/yipay',2,...); the column list at database/sql/install.sql:484-497 proves the 8th value is merchant_pem. install.sql:516-517 repeat the same literal for ids 15/16. install.sql:539-540 ('UPDATE `pays` SET `is_open`=0; UPDATE `pays` SET `is_open`=1 WHERE `pay_handleroute`='/pay/yipay';') leave exactly these three rows open. EVID_CRYPTO_ALGORITHM_USAGE + EVID_CRYPTO_SECURITY_CONTEXT: app/Http/Controllers/Pay/YipayController.php:82-95 - ksort($data), concatenation of key=value pairs (skipping sign/sign_type/empty), then $expectedSign = md5($sign . $payGateway->merchant_pem); if (!$this->secureCompare($expectedSign, $data['sign'])) return 'fail'; - the secret is the only unknown and it is a repository constant. EVID_AUTH_PATH_MATCH: routes/common/pay.php:12,28 - GET route, group middleware dujiaoka.pay_gate_way is a pass-through (app/Http/Middleware/PayGateWay.php:17-20). EVID_AUTH_PERMISSION_CHECK: app/Http/Controllers/PayController.php:112-130 (hasRequiredFields only requires non-empty out_trade_no/trade_no/money/sign; secureCompare is a correct hash_equals) and app/Http/Controllers/Pay/YipayController.php:68-81 (only trade_status/status allow-listing and isExpectedGatewayRoute) - no merchant_id/pid check, no signature-over-time check. Chain of the cast: app/Models/Pay.php:15-19 maps merchant_pem to App\\Casts\\EncryptedOrPlaintext; app/Casts/EncryptedOrPlaintext.php:17-30 returns the raw value when it does not look like a Laravel payload, and looksEncrypted() (:51-63) requires a base64 JSON payload with iv/value/mac, so the utf8mb4 literal survives unchanged. Because the seed is imported with DB::unprepared (app/Http/Controllers/Home/HomeController.php:204) the set() branch that would have encrypted it is never executed. Gateway selection: app/Service/PayService.php:60-66 detail(int $id) filters where('is_open', Pay::STATUS_OPEN) with Pay::STATUS_OPEN = 1 (app/Models/BaseModel.php:17), which matches install.sql:540. Amount gate: app/Service/OrderProcessService.php:418-422 bccomp($order->actual_price, $actualPrice, 2) - satisfied by the attacker because actual_price is disclosed to the buyer on the bill page (resources/views/hyper/static_pages/bill.blade.php:30) and in the order detail page. EVID_CRYPTO_EXPLOIT_PROOF / EVID_AUTH_BYPASS_RESPONSE: [Not obtained - MODE=static, no instance was installed and no notification was replayed].",
+      "non_vuln_analysis": "Reasons this could be a false positive: (a) if the operator replaced merchant_pem with a real epay key, the signature is not forgeable - this is why the verdict is conditionally-exploitable rather than unconditional; (b) the signature comparison itself is constant-time (hash_equals, app/Http/Controllers/PayController.php:123-130), so the weakness is the key, not the comparison; (c) a store that never uses the epay gateway can delete/close pay 14-16 (PayService::detail() then returns null and notifyUrl answers 'fail' at app/Http/Controllers/Pay/YipayController.php:70-72). Net assessment: for any store that installs from database/sql/install.sql and leaves the shipped epay row enabled, the forgery is a single anonymous GET, so the finding stands.",
+      "remediation": "Do not ship a working-signature placeholder for a default-enabled gateway: ship the epay rows closed (or with merchant_pem = '' and a NOT NULL/empty guard in the verifier), force a non-empty, non-default secret before the gateway can be enabled (validator in app/Admin/Controllers/PayController.php), and refuse to verify a notification when merchant_pem is empty or equals a documented placeholder. Additionally bind the notification to the configured merchant_id/pid and reject replays (persist processed trade_no with the gateway id).",
+      "cvss_like": {
+        "reachability": 3,
+        "reachability_reason": "anonymous single GET on a documented public callback route (routes/common/pay.php:28), no auth/CSRF/rate limit",
+        "impact": 3,
+        "impact_reason": "full payment bypass with card (goods) delivery and persisted order state",
+        "complexity": 2,
+        "complexity_reason": "everything is attacker-friendly, but the placeholder secret must still be configured on the target",
+        "score": 2.75,
+        "cvss": 9.17,
+        "level": "C",
+        "vuln_id": "C-BIZ-001"
+      },
+      "prerequisite_conditions": {
+        "auth_requirement": "anonymous",
+        "bypass_method": "knowledge of the repository default merchant_pem used as the HMAC/MD5 key",
+        "other_preconditions": [
+          "install.lock present",
+          "pays id 14/15/16 keep the seeded placeholder secret",
+          "attacker owns or knows a pending order_sn + actual_price"
+        ],
+        "exploitability_judgment": "conditionally_exploitable"
+      }
+    },
+    {
+      "id": "PQ-003",
+      "item_id": "PQ-003",
+      "title": "Anonymous e-mail order lookup has no ownership proof and the search_pwd predicate is silently dropped whenever it is empty, exposing delivered card secrets",
+      "severity": "high",
+      "confidence": 0.85,
+      "verdict": "confirmed-code-path",
+      "file": "app/Service/OrderService.php",
+      "line": 259,
+      "related_locations": [
+        "app/Service/OrderService.php:212-216 (detailOrderSN: WHERE order_sn = ? only)",
+        "app/Service/OrderService.php:259-269 (withEmailAndPassword: when(!empty($searchPwd)) predicate)",
+        "app/Http/Controllers/Home/OrderController.php:171-179 (detailOrderSN, no ownership proof)",
+        "app/Http/Controllers/Home/OrderController.php:191-194 (searchOrderBySN -> detailOrderSN)",
+        "app/Http/Controllers/Home/OrderController.php:206-222 (searchOrderByEmail guard + withEmailAndPassword)",
+        "app/Http/Controllers/Home/OrderController.php:233-242 (searchOrderByBrowser cookie path)",
+        "routes/common/web.php:24,30,32,34 (all anonymous, dujiaoka.boot group)",
+        "resources/views/hyper/static_pages/orderinfo.blade.php:97-100 (raw $order['info'] rendered into a textarea)",
+        "app/Service/OrderProcessService.php:509-524 (info = implode(PHP_EOL, card secrets))",
+        "vendor/laravel/framework/src/Illuminate/Support/Traits/InteractsWithData.php:52-66 (has() = Arr::has, true for a present-but-empty key)",
+        "vendor/laravel/framework/src/Illuminate/Http/Concerns/InteractsWithInput.php:273-284 (retrieveItem returns the default '' when the stored value is null)"
+      ],
+      "source": "POST /search-order-by-email body field email (routes/common/web.php:32) -> $request->input('email') / $request->input('search_pwd','') (app/Http/Controllers/Home/OrderController.php:217). Also GET /detail-order-sn/{orderSN} (routes/common/web.php:24) and POST /search-order-by-sn (routes/common/web.php:30).",
+      "sink": "app/Service/OrderService.php:261-268 Order::query()->where('email',$email)->when(!empty($searchPwd), fn => where('search_pwd',$searchPwd))->orderBy('created_at','DESC')->take(5)->get() - no session, cookie, IP or owner predicate - then rendered with orders.info (plaintext card secrets) by resources/views/hyper/static_pages/orderinfo.blade.php:97.",
+      "reachability": "Anonymous. routes/common/web.php:12 wraps all of these in the dujiaoka.boot group only (session + CSRF + SecurityHeaders, app/Http/Kernel.php:34-43); there is no auth middleware and no throttle. The POST needs a CSRF token, which any visitor obtains from the public /order-search page (app/Http/Controllers/Home/OrderController.php:254-257) in its own session - not an access control.",
+      "preconditions": "1) install.lock present. 2) The attacker knows a customer e-mail address (public in most shops: order confirmation, support tickets, leaked lists). 3) No ownership proof exists in the code path, so no further precondition is required; note that dujiaoka_config_get('is_open_search_pwd', STATUS_CLOSE) defaults to closed (app/Helpers/functions.php:58-62, app/Models/BaseModel.php:18, and install.sql contains no is_open_search_pwd row), so the guard at app/Http/Controllers/Home/OrderController.php:208-216 is normally not even active.",
+      "impact": "Disclosure of up to the 5 newest orders of any e-mail address, including orders.info which holds the plaintext card secrets of completed orders (app/Service/OrderProcessService.php:520-524), plus buyer IP, price and order_sn. The attacker then owns already-sold cards, so the buyer paid for goods the attacker consumes. Cross-tenant data disclosure of money-equivalent inventory.",
+      "evidence": "EVID_AUTH_PATH_MATCH: routes/common/web.php:24 'detail-order-sn/{orderSN}', :30 'search-order-by-sn', :32 'search-order-by-email', :34 'search-order-by-browser' - all inside the anonymous dujiaoka.boot group; app/Http/Kernel.php:34-43 shows the web group has no auth middleware. EVID_AUTH_TOKEN_JUDGMENT: the only credential considered anywhere is the optional per-order free-text search_pwd (app/Service/OrderService.php:263-265). EVID_AUTH_PERMISSION_CHECK: app/Http/Controllers/Home/OrderController.php:208-216 - the guard is `!$request->has('email') || (dujiaoka_config_get('is_open_search_pwd', STATUS_CLOSE) == STATUS_OPEN && !$request->has('search_pwd'))`; with the default it reduces to \"email present\". Even with is_open_search_pwd enabled the guard is bypassable because Illuminate Request::has() is Arr::has-based (vendor/laravel/framework/src/Illuminate/Support/Traits/InteractsWithData.php:52-66) and therefore true for a present-but-empty key: POST search_pwd= (or a JSON null) passes the guard, ConvertEmptyStringsToNull converts it to null, retrieveItem returns the default '' (vendor/laravel/framework/src/Illuminate/Http/Concerns/InteractsWithInput.php:279-281), and !empty('') skips the WHERE search_pwd predicate at app/Service/OrderService.php:263. EVID_AUTH_IDOR_OWNERSHIP: app/Service/OrderService.php:261-268 contains no owner/session/cookie predicate; the buyer cookie dujiaoka_orders (app/Http/Controllers/Home/OrderController.php:98-109) is set for the browser path but never consulted by the e-mail or SN paths. EVID_LEAK_SOURCE_POINT + EVID_LEAK_DATA_TYPE: app/Service/OrderProcessService.php:520-524 stores the delivered card secrets in orders.info; resources/views/hyper/static_pages/orderinfo.blade.php:97-100 prints {{$order['info']}} raw (same in resources/views/luna and resources/views/unicorn variants). EVID_LEAK_ACCESS_PATH: app/Http/Controllers/Home/OrderController.php:221 renders that view for the e-mail result set, :178 for the SN path. EVID_LEAK_RESPONSE_CONTENT / EVID_AUTH_BYPASS_RESPONSE: [Not obtained - MODE=static, no instance was queried].",
+      "non_vuln_analysis": "Reasons this could be argued away: (a) order_sn is strtoupper(Str::random(16)) (app/Service/OrderProcessService.php:322) so the pure SN paths (/detail-order-sn, /search-order-by-sn) are not enumerable and are rejected separately (see rejected PQ-003a) - the vulnerability is the e-mail predicate, not SN guessing; (b) when is_open_search_pwd is ON and the operator forces a non-empty per-order search_pwd AND the attacker submits the wrong non-empty value, the predicate does apply - but the empty-value bypass above defeats that, and the default state never applies it at all; (c) the dujiaoka_orders cookie path is Laravel-encrypted (see rejected PQ-003b) so it is not an alternative forgery path. Net assessment: the e-mail lookup returns another tenant's orders and card secrets with no ownership proof, so the finding stands.",
+      "remediation": "Require a real ownership proof before rendering orders.info: e-mail a single-use tokenised link, or require order_sn + a non-empty search_pwd, and change withEmailAndPassword() to apply an explicit predicate `where('search_pwd', (string)$searchPwd)` with an early return when the flag is on and the value is empty (never rely on `when(!empty(...))`). Default is_open_search_pwd to ON, store search_pwd as a hash, mask card secrets in list views (reveal only on an explicit, re-authenticated per-order view), and add throttle:10,1 to the order-search routes.",
+      "cvss_like": {
+        "reachability": 3,
+        "reachability_reason": "anonymous POST/GET on public order routes with only a CSRF token requirement",
+        "impact": 2,
+        "impact_reason": "sensitive cross-tenant disclosure (delivered card secrets for up to 5 orders) without state change",
+        "complexity": 2,
+        "complexity_reason": "needs a CSRF token round-trip plus knowledge of the victim e-mail",
+        "score": 2.4,
+        "cvss": 8.0,
+        "level": "H",
+        "vuln_id": "H-AUTHZ-001"
+      },
+      "prerequisite_conditions": {
+        "auth_requirement": "anonymous",
+        "bypass_method": "IDOR via e-mail field; the optional search_pwd predicate is skipped when empty (and empty is accepted by Request::has())",
+        "other_preconditions": [
+          "install.lock present",
+          "attacker knows the victim e-mail address"
+        ],
+        "exploitability_judgment": "directly_exploitable"
+      }
+    },
+    {
+      "id": "PQ-004",
+      "item_id": "PQ-004",
+      "title": "Stripe /pay/stripe/check trusts the client-supplied stripe_usd_amount as the expected charge amount and completes the order at the order price, so a cheap self-made Source completes an expensive order",
+      "severity": "high",
+      "confidence": 0.65,
+      "verdict": "confirmed-code-path / conditionally-exploitable (Stripe gateway must be enabled and the publishable key is needed for the Source)",
+      "file": "app/Http/Controllers/Pay/StripeController.php",
+      "line": 524,
+      "related_locations": [
+        "routes/common/pay.php:35-38 (GET stripe gateway/return_url/check/charge, no auth, no CSRF for GET)",
+        "app/Http/Controllers/Pay/StripeController.php:473-522 (check)",
+        "app/Http/Controllers/Pay/StripeController.php:485-494 (attacker-controlled stripe_usd_amount + optional context)",
+        "app/Http/Controllers/Pay/StripeController.php:500-516 (Source checks + Charge::create + completedOrder with order price)",
+        "app/Http/Controllers/Pay/StripeController.php:524-558 (charge)",
+        "app/Http/Controllers/PayController.php:132-168 (buildOrderContextToken / validateOrderContextToken, HMAC over order_sn|pay_id|price|extra)",
+        "app/Http/Controllers/Pay/StripeController.php:32-34,380,398-404 (publishable key + client-side Source creation with amount/currency/owner.name = order_sn)",
+        "app/Http/Controllers/Pay/StripeController.php:454-459 (returnUrl compares the amount to bcmul(actual_price,100,0) server-side - the correct pattern)",
+        "app/Service/OrderProcessService.php:385-434 (completedOrder uses the order price, not the charged amount)"
+      ],
+      "source": "Anonymous GET /pay/stripe/check?orderid=&source=&stripe_usd_amount=&context= -> $request->all() at app/Http/Controllers/Pay/StripeController.php:476 and $request->input('stripe_usd_amount', <server value>) at :485-488.",
+      "sink": "\\Stripe\\Source::retrieve($data['source']) (:500) then the amount comparison (int)$source_object->amount !== $stripeUsdAmount (:504) against the attacker-chosen value, \\Stripe\\Charge::create(['amount' => $source_object->amount, ...]) (:509-513) and $this->orderProcessService->completedOrder($data['orderid'], $cacheord->actual_price, $charge->id) (:515).",
+      "reachability": "Anonymous GET, no auth middleware (only the pass-through dujiaoka.pay_gate_way), and GET is not covered by VerifyCsrfToken (app/Http/Middleware/VerifyCsrfToken.php:21-26 exempts only pay/*/notify_url and pay/*/return_url, but CSRF never applies to GET anyway).",
+      "preconditions": "1) install.lock present. 2) The operator enabled the Stripe pays row (database/sql/install.sql:521, id 21, pay_handleroute 'pay/stripe') and set a real secret key: install.sql:539-540 disables it by default, and PayService::detail() filters is_open = 1 (app/Service/PayService.php:60-66), so on a stock install check()/charge() return 'fail' at :495-498 / :539-542 before any Stripe call. 3) The attacker needs the publishable key, which the gateway page renders to anyone who opens /pay/stripe/{payway}/{orderSN} (:27,:32 with $pk = $this->payGateway->merchant_id). 4) The attacker creates the Source client-side exactly as the page's own JS does ({amount, currency:'usd', owner:{name: order_sn}}) - Stripe enforces only per-method minimum amounts, which are far below a typical order price [Needs Verification: Stripe.js accepts an arbitrary amount for the 'wechat' source type created with a publishable key].",
+      "impact": "Payment bypass with real money: the order is completed and the cards delivered at $cacheord->actual_price while only the small USD amount of the attacker-created Source is actually charged. completedOrder() compares the order price with the order price (:515 passes $cacheord->actual_price), so the underpayment is invisible to the store and to the amount check.",
+      "evidence": "EVID_BIZ_FLOW_DESCRIPTION: app/Http/Controllers/Pay/StripeController.php:28-34 - the gateway computes $usd = bcmul($this->getUsdCurrency(actual_price),100,0), mints the HMAC context token (app/Http/Controllers/PayController.php:132-146) and interpolates both into the page JS at :380 ('/pay/stripe/check/?orderid=$orderid&context=$context&stripe_usd_amount=$usd&source=' + source). EVID_BIZ_BYPASS_POINT: :485-494 - $stripeUsdAmount = (int)$request->input('stripe_usd_amount', <server default>) and the HMAC is only validated when $request->filled('context'), so omitting context removes the binding entirely; :501-508 then validates the attacker-created Source against that same attacker-chosen number (status 'chargeable', currency 'usd', amount === $stripeUsdAmount, owner->name == orderid) - the comparison is self-referential, it proves nothing about the order price. EVID_BIZ_STATE_PERSISTENCE: :509-516 Charge::create with amount = $source_object->amount, then completedOrder($data['orderid'], $cacheord->actual_price, $charge->id); app/Service/OrderProcessService.php:418-422 bccomp($order->actual_price, $actualPrice, 2) compares the order price with the order price, :423-434 persists trade_no/actual_price and :509-538 delivers the cards. Contrast the sibling endpoints that do it correctly: :544-548 (/charge uses the server-computed amount) and :454-459 (/return_url requires currency 'cny' and amount === (int)bcmul(actual_price,100,0)). EVID_AUTH_PATH_MATCH: routes/common/pay.php:37 GET stripe/check with only the no-op PayGateWay middleware. EVID_BIZ_EXPLOIT_RESPONSE: [Not obtained - MODE=static; no Stripe account was contacted and no charge was created].",
+      "non_vuln_analysis": "Reasons this could be a false positive: (a) creating and retrieving the Source requires the merchant's Stripe keys, so the attacker cannot fabricate an arbitrary Source object - but they can create a genuine cheap one with the public publishable key used by the page itself (:398-404), so the trust boundary is the client-chosen amount, not the object's authenticity; (b) if the operator leaves the gateway disabled (the shipped default, install.sql:539-540) the endpoint is inert - documented as a precondition, not as a defence; (c) Stripe enforces per-method minimum charge amounts, which reduce but do not remove the gap. Net assessment: the validation compares two attacker-controlled numbers, so the finding stands once Stripe is enabled.",
+      "remediation": "Never take the expected amount from the request: recompute it server-side (bcmul($this->getUsdCurrency($order->actual_price),100,0)) as /return_url already does at :454-459, make the order-context token mandatory (reject requests without a valid context instead of `if ($request->filled('context')`), and complete the order with the charged amount rather than $cacheord->actual_price so completedOrder()'s own bccomp() check can detect an underpayment.",
+      "cvss_like": {
+        "reachability": 3,
+        "reachability_reason": "anonymous GET on a public pay route, no auth and no CSRF on GET",
+        "impact": 3,
+        "impact_reason": "payment bypass with goods delivery (financial loss)",
+        "complexity": 1,
+        "complexity_reason": "requires the Stripe gateway enabled, the publishable key, a client-side Source creation and omitting the context token",
+        "score": 2.5,
+        "cvss": 8.33,
+        "level": "H",
+        "vuln_id": "H-BIZ-002"
+      },
+      "prerequisite_conditions": {
+        "auth_requirement": "anonymous",
+        "bypass_method": "omit the optional 'context' HMAC and supply stripe_usd_amount matching a cheap self-created Source",
+        "other_preconditions": [
+          "install.lock present",
+          "Stripe pays row enabled with a real secret key (disabled by default)",
+          "publishable key rendered by the public gateway page"
+        ],
+        "exploitability_judgment": "conditionally_exploitable"
+      }
+    },
+    {
+      "id": "PQ-004-GET",
+      "item_id": "PQ-004",
+      "title": "Stripe charge/check move money over unauthenticated GET with the order-context binding skipped when omitted, and echo raw provider exception text",
+      "severity": "medium",
+      "confidence": 0.8,
+      "verdict": "confirmed-code-path / conditionally-exploitable (Stripe gateway must be enabled)",
+      "file": "app/Http/Controllers/Pay/StripeController.php",
+      "line": 524,
+      "related_locations": [
+        "routes/common/pay.php:35-38",
+        "app/Http/Controllers/Pay/StripeController.php:473-522 (check), :524-558 (charge)",
+        "app/Http/Controllers/Pay/StripeController.php:536 (context validated only when filled), :490 (same in check), :456 (same in returnUrl)",
+        "app/Http/Controllers/Pay/StripeController.php:554-556 (return $e->getMessage())",
+        "app/Http/Middleware/VerifyCsrfToken.php:21-26 (only notify_url/return_url exempt, and CSRF does not cover GET at all)"
+      ],
+      "source": "Anonymous GET /pay/stripe/charge?orderid=&stripeToken=[&context=] and GET /pay/stripe/check?orderid=&source=&stripe_usd_amount=[&context=] -> $request->all() (:476, :526).",
+      "sink": "\\Stripe\\Charge::create() (:509, :544) followed by completedOrder() (:515, :550), plus `return $e->getMessage();` (:555) which writes the raw Stripe exception message into the HTTP response body.",
+      "reachability": "Anonymous GET, no auth middleware, GET is outside CSRF protection; the endpoints return bare strings ('success'/'fail'/exception text) with no redirect or ownership check.",
+      "preconditions": "1) install.lock present. 2) Stripe pays row (id 21) enabled with a real key - disabled by default (install.sql:539-540, PayService::detail() is_open filter). 3) The attacker either holds a Stripe token/source for the merchant account or is content to make the merchant charge someone (the amount is server-computed for /charge, so there is no price bypass here - see rejected PQ-004a).",
+      "impact": "Any third party who learns an order_sn (e.g. through PQ-003) can drive a real charge/order-completion state transition on another buyer's order with a simple cross-site GET or an <img> tag, because the intended HMAC order-context binding is only enforced when the request happens to include 'context'. The verbatim exception echo (:555) discloses internal Stripe error text (invalid-key/token diagnostics, test-vs-live hints) to anonymous callers; Stripe masks key material, so no full key is exposed [Needs Verification of exact Stripe message text - vendor\\stripe is not present in this checkout].",
+      "evidence": "EVID_CSRF_ENDPOINT_IDENTITY: routes/common/pay.php:37-38 - GET endpoints that call Stripe Charge::create and completedOrder (state change + money movement). EVID_CSRF_TOKEN_STATUS: app/Http/Kernel.php:34-43 puts routes/common/pay.php inside the web group, but Illuminate\\Foundation\\Http\\Middleware\\VerifyCsrfToken only validates POST/PUT/PATCH/DELETE, so a GET charge is inherently un-CSRF-protected; app/Http/Middleware/VerifyCsrfToken.php:21-26 shows the only exemptions are notify_url/return_url. EVID_AUTH_PERMISSION_CHECK: app/Http/Controllers/Pay/StripeController.php:536 'if ($request->filled('context') && !$this->validateOrderContextToken(...))' - the HMAC (app/Http/Controllers/PayController.php:132-155) is skipped entirely when the parameter is absent, so the route has no ownership binding in practice; :490 does the same in check(). EVID_LEAK_SOURCE_POINT + EVID_LEAK_DATA_TYPE: :554-556 `catch (\\Exception $e) { return $e->getMessage(); }` returns provider-internal diagnostics to an anonymous caller instead of a generic failure. EVID_CSRF_CROSS_ORIGIN_RESPONSE / EVID_LEAK_RESPONSE_CONTENT: [Not obtained - MODE=static, nothing was sent].",
+      "non_vuln_analysis": "(a) On a stock install the endpoints answer 'fail' because pay 21 is closed (install.sql:539-540 + app/Service/PayService.php:60-66), so this is a hardening issue that becomes live only after the operator enables Stripe; (b) /charge computes the amount server-side (:544-548), so a cross-site GET cannot choose the price or redirect the money; (c) the context token is an additional binding, not the only one - the Source/Charge is still created against the merchant account. Net assessment: the missing ownership binding plus GET semantics is a real, if lower-impact, design weakness and the exception echo is a genuine information exposure, so it is reported at medium.",
+      "remediation": "Convert check/charge to POST, keep CSRF enabled, make the order-context token mandatory for every call, add throttle middleware, and replace `return $e->getMessage()` with a generic failure plus a logged, correlated error id. Restrict the endpoints to the buyer's session/cookie (the dujiaoka_orders cookie already identifies the buyer).",
+      "cvss_like": {
+        "reachability": 3,
+        "reachability_reason": "anonymous GET, no auth/CSRF/ownership binding",
+        "impact": 1,
+        "impact_reason": "state change on a third party's order plus limited internal error-text disclosure",
+        "complexity": 2,
+        "complexity_reason": "requires the Stripe gateway enabled and a known order_sn; a victim-side GET is otherwise trivial",
+        "score": 2.05,
+        "cvss": 6.83,
+        "level": "M",
+        "vuln_id": "M-CSRF-001"
+      },
+      "prerequisite_conditions": {
+        "auth_requirement": "anonymous",
+        "bypass_method": "omit the optional 'context' parameter",
+        "other_preconditions": [
+          "install.lock present",
+          "Stripe pays row enabled with a real key (disabled by default)"
+        ],
+        "exploitability_judgment": "conditionally_exploitable"
+      }
+    }
+  ],
+  "rejected": [
+    {
+      "id": "PQ-001a",
+      "title": "Yipay notify signature comparison can be bypassed with loose type juggling / 0e magic hashes",
+      "reason": "Refuted. app/Http/Controllers/Pay/YipayController.php:94-95 routes the comparison through app/Http/Controllers/PayController.php:123-130, which requires both operands to be strings and uses hash_equals($expected, $actual). There is no == comparison and no numeric coercion on that path, so type juggling does not apply; the real defect is the key value (PQ-001)."
+    },
+    {
+      "id": "PQ-001b",
+      "title": "The anonymous bill/detail page amount disclosure is itself a payment bypass (attacker sets an arbitrary money value)",
+      "reason": "Refuted as a standalone bypass. app/Service/OrderProcessService.php:418-422 rejects any notification whose money does not bccomp-equal the stored actual_price, so a wrong or attacker-chosen amount is refused. The disclosure (resources/views/hyper/static_pages/bill.blade.php:30) only matters because it lets the attacker sign the single correct value; without a forgeable key (PQ-001) the disclosed amount is not actionable."
+    },
+    {
+      "id": "PQ-001c",
+      "title": "The EncryptedOrPlaintext cast lets an attacker make the verifier use ciphertext, or the cast itself is a bypass",
+      "reason": "Refuted. app/Casts/EncryptedOrPlaintext.php:17-30 returns a value unchanged unless it parses as a base64 JSON payload with iv/value/mac (:51-63) and otherwise delegates to Crypt::decryptString(). A wrong APP_KEY makes it throw instead of returning a usable signing key, and the casts only transform stored values - they add no attacker-controlled input to the signer. Its relevance to PQ-001 is only that it explains why the seeded plaintext literal survives to the verifier."
+    },
+    {
+      "id": "PQ-003a",
+      "title": "Order secrets can be obtained by enumerating /detail-order-sn/{orderSN} or /search-order-by-sn",
+      "reason": "Refuted as an enumeration vector. routes/common/web.php:24,30 are anonymous, but orders.order_sn is generated as strtoupper(Str::random(16)) (app/Service/OrderProcessService.php:322) from random_bytes, so the value space is not brute-forceable and there is no listing response. The exploitable path in this domain is the e-mail lookup predicate (PQ-003), not SN guessing."
+    },
+    {
+      "id": "PQ-003b",
+      "title": "The dujiaoka_orders cookie used by /search-order-by-browser can be forged to read arbitrary orders",
+      "reason": "Refuted. app/Http/Middleware/EncryptCookies.php:14-16 has an empty $except list, so Laravel encrypts and MACs every cookie including dujiaoka_orders (set at app/Http/Controllers/Home/OrderController.php:98-109) with APP_KEY. Cookie::get('dujiaoka_orders') returns null for a forged/serialised payload, so shop-order data cannot be injected without the application key."
+    },
+    {
+      "id": "PQ-004a",
+      "title": "/pay/stripe/charge undercharges because the client controls the amount",
+      "reason": "Refuted. app/Http/Controllers/Pay/StripeController.php:544-548 charges 'amount' => bcmul($this->getUsdCurrency($cacheord->actual_price), 100, 0), computed server-side from the stored order price; stripeToken is only the payment source. The underpayment risk lives in /check (PQ-004), which compares the Source amount against the client-supplied stripe_usd_amount."
+    },
+    {
+      "id": "PQ-004b",
+      "title": "The Stripe exception echo leaks the merchant secret key",
+      "reason": "Refuted as stated. app/Http/Controllers/Pay/StripeController.php:554-556 returns \\Stripe\\Exception\\*::getMessage(); no application code interpolates $payGateway->merchant_pem into that string (app/Http/Controllers/Pay/StripeController.php:452,499,543), and Stripe's own messages mask key material. The echo is still a (lower-severity) internal-diagnostics disclosure, reported inside PQ-004-GET, not a secret-key leak."
+    },
+    {
+      "id": "PQ-004c",
+      "title": "Stripe check/charge can complete orders on a default installation",
+      "reason": "Refuted for the shipped configuration. database/sql/install.sql:539-540 disable id 21 and re-enable only '/pay/yipay'; app/Service/PayService.php:60-66 filters is_open = STATUS_OPEN, so app/Http/Controllers/Pay/StripeController.php:495-498 and :539-542 return 'fail' before Stripe::setApiKey(). The Stripe findings are therefore conditional on the operator enabling the gateway, as stated in their preconditions."
+    }
+  ]
+}

@@ -1,0 +1,385 @@
+{
+  "schema": "php-audit-findings/1.0",
+  "target": ".",
+  "commit": "b9ef09f2e1ac63f35aa041418266e96b09802783",
+  "branch": "upgrade/php83",
+  "mode": "static",
+  "generatedAt": "2026-10-24",
+  "summary": {
+    "verifiedCount": 13,
+    "severityCounts": {
+      "critical": 0,
+      "high": 3,
+      "medium": 5,
+      "low": 5,
+      "info": 0
+    },
+    "rejectedOrSuspectedCount": 24,
+    "dynamicPhaseRan": false
+  },
+  "findings": [
+    {
+      "id": "PQ-01",
+      "title": "易支付(yipay)回调签名使用 install.sql 种子中的公开占位密钥校验，匿名可伪造通知完成订单并取走卡密",
+      "severity": "high",
+      "severityScore": 8.1,
+      "cvss31": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+      "cwe": [
+        "CWE-798",
+        "CWE-345"
+      ],
+      "file": "app/Http/Controllers/Pay/YipayController.php",
+      "line": 94,
+      "reachability": "anonymous",
+      "confidence": 0.8,
+      "preconditions": "install.lock 存在；攻击者订单绑定的 pays 行仍为出厂占位密钥（全新安装默认只有 /pay/yipay 启用）；存在自动发货且有库存的商品",
+      "summary": "GET /pay/yipay/notify_url 的签名校验是 md5(排序参数 + pays.merchant_pem)。install.sql 种子把 merchant_pem 写成公开占位字面量，且默认仅启用 yipay，因此签名可离线计算。payway 由下单请求任意指定为 pays.id，金额校验只对比攻击者已知的订单原价，签名通过后直接 completedOrder() -> processAuto() 发卡。",
+      "evidence": [
+        "app/Http/Controllers/Pay/YipayController.php:94 $expectedSign = md5($sign . $payGateway->merchant_pem);",
+        "app/Http/Controllers/Pay/YipayController.php:101 completedOrder($data['out_trade_no'], (float) $data['money'], $data['trade_no']);",
+        "routes/common/pay.php:28 GET pay/yipay/notify_url（组中间件仅 dujiaoka.pay_gate_way，直通）",
+        "app/Http/Middleware/PayGateWay.php:17-20 纯 pass-through",
+        "app/Http/Middleware/VerifyCsrfToken.php:24 豁免 pay/*/notify_url",
+        "database/sql/install.sql:515-517 yipay 行 merchant_pem 为公开占位字面量",
+        "database/sql/install.sql:538-540 仅启用 pay_handleroute='/pay/yipay'",
+        "app/Service/OrderProcessService.php:418-422 金额只做 bccomp(actual_price, 传入值)，两者同源",
+        "app/Service/OrderProcessService.php:509-527 processAuto 把卡密写入 orders.info",
+        "app/Http/Controllers/Home/OrderController.php:171-179 未认证即可读取该 info"
+      ],
+      "remediation": "拒绝空密钥/已知占位符的支付渠道回调；用易支付服务端查询接口二次核对交易；为回调绑定服务端 nonce；install.sql 出厂全部 is_open=0 且不含可用凭据字面量；下单时校验 pay_id 存在、已启用、已配置。",
+      "verdict": "isReal=true; verifier confidence 0.80; 链路在当前工作树完整，无补偿控制；削弱因素仅为配置前提（运营者未改占位密钥）。"
+    },
+    {
+      "id": "PQ-04",
+      "title": "匿名按邮箱检索订单直接返回卡密明文，无归属校验、无频控（is_open_search_pwd 默认关闭）",
+      "severity": "high",
+      "severityScore": 7.5,
+      "cvss31": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "cwe": [
+        "CWE-359",
+        "CWE-200"
+      ],
+      "file": "app/Http/Controllers/Home/OrderController.php",
+      "line": 206,
+      "reachability": "anonymous",
+      "confidence": 0.9,
+      "preconditions": "install.lock 存在；知道/猜到客户邮箱；is_open_search_pwd 保持默认关闭",
+      "summary": "POST /search-order-by-email 位于 dujiaoka.boot 组，无 auth、无 throttle。控制器仅在 is_open_search_pwd==OPEN 时才要求 search_pwd，而该配置项默认不存在（Cache 默认返回 STATUS_CLOSE=0），于是 withEmailAndPassword() 退化为 where('email',?) 无任何归属谓词，取最近 5 条订单并渲染 orderinfo 模板，模板中 info 即卡密明文。",
+      "evidence": [
+        "routes/common/web.php:32 POST search-order-by-email（dujiaoka.boot 组，无 auth/throttle）",
+        "app/Http/Kernel.php:34-43 web 组无 throttle",
+        "app/Http/Controllers/Home/OrderController.php:208-216 仅在 is_open_search_pwd==OPEN 时才校验 search_pwd",
+        "app/Helpers/functions.php:58-62 配置缺失时返回默认 STATUS_CLOSE=0",
+        "app/Service/OrderService.php:259-269 where('email',?)，无 owner/session 谓词，take(5)",
+        "app/Service/OrderProcessService.php:520-524 order.info = implode(PHP_EOL, carmisInfo)",
+        "resources/views/unicorn/static_pages/orderinfo.blade.php:83-85 直接输出 order['info']"
+      ],
+      "remediation": "要求归属证明（一次性邮件令牌或 order_sn+search_pwd）；默认开启 is_open_search_pwd 并强制非空；列表视图掩码卡密；对搜索路由加 throttle:10,1；统一“未找到”响应。",
+      "verdict": "isReal=true; verifier confidence 0.90; 泄露物即已售卡密，DB 有 email 索引，可批量扫库；原报告“返回买家 IP”不成立（模板未渲染 buy_ip），单次最多 5 条。"
+    },
+    {
+      "id": "PQ-05",
+      "title": "Stripe /pay/stripe/check 的订单上下文令牌可选，且以订单原价而非实付金额完成订单",
+      "severity": "high",
+      "severityScore": 7.4,
+      "cvss31": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+      "cwe": [
+        "CWE-472",
+        "CWE-840"
+      ],
+      "file": "app/Http/Controllers/Pay/StripeController.php",
+      "line": 485,
+      "reachability": "anonymous",
+      "confidence": 0.82,
+      "preconditions": "Stripe 渠道被运营者启用并配置真实 pk/sk；攻击者能以小额 USD Source 且 owner.name 填自己的 order_sn",
+      "summary": "check() 中期望金额取自客户端 stripe_usd_amount，订单绑定 HMAC 仅在客户端主动提交 context 时校验（$request->filled('context')）；随后用订单自身 actual_price 调用 completedOrder()，而 completedOrder 又用同一值做金额比对，校验自指。攻击者可自建高价订单，用最小额 Stripe Source 完成。同文件 returnUrl()/charge() 采用服务端计算金额，证明安全写法已知但此处未用。",
+      "evidence": [
+        "routes/common/pay.php:37-38 GET stripe/check 与 stripe/charge，匿名、GET 无 CSRF",
+        "app/Http/Controllers/Pay/StripeController.php:485-488 stripe_usd_amount 客户端可控",
+        "app/Http/Controllers/Pay/StripeController.php:489-494 context 校验被 $request->filled('context') 短路",
+        "app/Http/Controllers/Pay/StripeController.php:501-508 Source 金额与 owner.name 均与客户端值比对",
+        "app/Http/Controllers/Pay/StripeController.php:515 completedOrder(orderid, cacheord->actual_price, charge->id)",
+        "app/Service/OrderProcessService.php:418-422 bccomp 自指，恒为 0",
+        "app/Http/Controllers/Pay/StripeController.php:454-459、544-548 正确兄弟实现（服务端计算金额）",
+        "database/sql/install.sql:540-541 Stripe 行默认 is_open=0（需运营者开启）"
+      ],
+      "remediation": "强制校验 context 令牌；删除客户端 stripe_usd_amount 作为权威来源；Charge 后断言金额/币种；向 completedOrder 传入独立推导的实付金额；Source 与订单服务端绑定（metadata/nonce）；加幂等与状态前置检查。",
+      "verdict": "isReal=true; verifier confidence 0.82; 四次反驳均失败；仅因渠道非默认开启而未评 critical。"
+    },
+    {
+      "id": "PQ-03",
+      "title": "install.lock 缺失时匿名安装器导入含大量 DROP TABLE 的 install.sql 并把 admin_users id=1 重置为攻击者凭据",
+      "severity": "medium",
+      "severityScore": 6.5,
+      "cvss31": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H",
+      "cwe": [
+        "CWE-306",
+        "CWE-284"
+      ],
+      "file": "app/Http/Controllers/Home/HomeController.php",
+      "line": 202,
+      "reachability": "anonymous",
+      "confidence": 0.74,
+      "preconditions": "install.lock 缺失——非容器部署，或容器以 INSTALL=true 启动；破坏目标库还需知道目标 MySQL 凭据（DB 主机取自请求）",
+      "summary": "POST /do-install 匿名，唯一关卡是 install.lock 是否存在（InstallCheck）。doInstall() 写入 .env、DB::unprepared(install.sql)（21 条 DROP TABLE IF EXISTS）并把 admin_users id=1 覆盖为请求凭据，最后才写锁。CSRF 不构成防护（GET /install 发同一会话令牌）。verifier 修正两点：(1) .env 写失败会触发 ErrorException 并在 DB::unprepared 之前中止（默认镜像 /app 只读，破坏链被同一权限错误阻断）；(2) DB/Redis 目标来自请求，攻击者需目标库凭据才能真正破坏目标数据。",
+      "evidence": [
+        "routes/common/web.php:37-42 /install 与 POST /do-install 仅 install.check",
+        "app/Http/Middleware/InstallCheck.php:19-23 仅以 base_path()/install.lock 存在与否判定",
+        "app/Http/Controllers/Home/HomeController.php:202 file_put_contents(.env)",
+        "app/Http/Controllers/Home/HomeController.php:204 DB::unprepared(file_get_contents(install.sql))",
+        "app/Http/Controllers/Home/HomeController.php:206-215 覆盖 admin_users id=1",
+        "app/Http/Controllers/Home/HomeController.php:216 最后写 install.lock",
+        "database/sql/install.sql 含 21 条 DROP TABLE IF EXISTS（如 :7,:228,:483）",
+        "Dockerfile:14 与 conf/start.sh:28-30 仅在 INSTALL!=true 时自动建锁"
+      ],
+      "remediation": "安装器仅由显式 INSTALL=true 或 CLI 开关启用；任何 .env/SQL 操作前以 fopen('x') 原子建锁，失败即中止；连接目标不得取自请求，或要求安装令牌并校验非内网地址；用增量迁移替代 DROP TABLE；种子不写死 admin 行。",
+      "verdict": "isReal=true; verifier confidence 0.74; 原报告“SQL 导入与 admin 重置仍执行”在默认镜像被证伪，故从 high 降为 medium。"
+    },
+    {
+      "id": "PQ-03-SSRF",
+      "title": "安装器 db_host/redis_host 未做目标校验即发起 MySQL/Redis 连接（匿名内网探测 + 盲写 Redis）",
+      "severity": "medium",
+      "severityScore": 5.8,
+      "cvss31": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:L/I:L/A:N",
+      "cwe": [
+        "CWE-918"
+      ],
+      "file": "app/Http/Controllers/Home/HomeController.php",
+      "line": 181,
+      "reachability": "anonymous",
+      "confidence": 0.8,
+      "preconditions": "install.lock 缺失；Redis 盲写还需 :179 的 DB 连通性测试先通过（可指向攻击者自建公网 MySQL）",
+      "summary": "POST /do-install 的 db_host/db_port/redis_host/redis_port/redis_password 被逐字合并进 config('database.connections.mysql') 与 config('database.redis.default')，仅有 CRLF 过滤；随后 DB::connection()->select() 与 Redis::set/get 以攻击者指定的 host:port 发起连接。可做内网服务枚举（三档错误分支）与对无密码 Redis 的盲写；不返回内网响应体。",
+      "evidence": [
+        "app/Http/Controllers/Home/HomeController.php:161-176 请求值逐字写入 DB/Redis 配置",
+        "app/Http/Controllers/Home/HomeController.php:179 DB::connection()->select('select 1 limit 1')",
+        "app/Http/Controllers/Home/HomeController.php:181-182 Redis::set/get",
+        "app/Http/Controllers/Home/HomeController.php:217-226 三档错误分支构成服务探测 oracle",
+        "app/Http/Controllers/Home/HomeController.php:147-158 仅校验 admin_*、app_url、admin_path，未校验 host",
+        "vendor/laravel/framework/src/Illuminate/Redis/Connectors/PhpRedisConnector.php:80-131 AUTH 仅在密码非空时发送"
+      ],
+      "remediation": "服务端校验 host（IP/域名字面量 + 解析后拒绝回环/私网/链路本地/CGNAT），端口白名单；优先从 .env 读取目标，表单只暴露库名/账号/密码；安装接口要求认证或一次性令牌；返回统一失败文案。",
+      "verdict": "isReal=true; verifier confidence 0.80; DatabaseManager purge 语义、Redis 配置快照与 AUTH 条件均已逐条核对，攻击者 host 确实会被拨号。"
+    },
+    {
+      "id": "PQ-06-A",
+      "title": "优惠券剩余次数先查后减（TOCTOU），无行锁且无 ret>0 谓词：并发下单可超发折扣",
+      "severity": "medium",
+      "severityScore": 6.1,
+      "cvss31": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
+      "cwe": [
+        "CWE-362",
+        "CWE-367"
+      ],
+      "file": "app/Service/OrderService.php",
+      "line": 165,
+      "reachability": "anonymous",
+      "confidence": 0.85,
+      "preconditions": "存在 is_open=1 且绑定该商品、ret>=1、discount>0 的优惠券；攻击者知道券码；并发请求命中事务窗口",
+      "summary": "OrderService::validatorCoupon 只用 ret<=0 做只读判断，实际扣减在 CouponService::retDecr 的 decrement('ret',1)，既无 lockForUpdate 也无 where('ret','>',0) 且忽略影响行数。InnoDB REPEATABLE READ 下多个事务都通过快照检查并按序扣减，ret 可被打到负数；折扣被持久化并成为实际支付金额。CouponBack 在订单过期时回补，可周期性重复利用。",
+      "evidence": [
+        "routes/common/web.php:20 POST create-order（dujiaoka.boot 组，无认证/无 throttle）",
+        "app/Service/OrderService.php:165 if ($coupon->ret <= 0) 只读判断",
+        "app/Service/CouponService.php:29-35 first()，无 lockForUpdate/sharedLock",
+        "app/Service/CouponService.php:58-63 decrement('ret',1)，无 ret>0 谓词、忽略返回值",
+        "app/Service/OrderProcessService.php:339、348-352、358-360 折扣持久化并扣减",
+        "database/sql/install.sql:276-289 coupons.ret 有符号 int，无 CHECK",
+        "app/Jobs/CouponBack.php:47-55 过期回补一次（可重复利用）"
+      ],
+      "remediation": "改为原子条件扣减（where('ret','>',0)->decrement 并检查影响行数，0 则抛异常回滚）；或在 withHasGoods 中 lockForUpdate；启用 is_use 判定；ret 用 GREATEST 或 CHECK 兜底；下单路由加 throttle 并默认开启验证码。",
+      "verdict": "isReal=true; verifier confidence 0.85; 五轴反驳均失败；仅因需并发窗口与已知券码评 medium。"
+    },
+    {
+      "id": "PQ-06-B",
+      "title": "卡密分配使用非锁定 take(N) SELECT 后无守卫 UPDATE，并发完成支付可把同一张卡发给两个订单",
+      "severity": "medium",
+      "severityScore": 5.9,
+      "cvss31": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
+      "cwe": [
+        "CWE-362",
+        "CWE-367"
+      ],
+      "file": "app/Service/CarmisService.php",
+      "line": 29,
+      "reachability": "anonymous",
+      "confidence": 0.82,
+      "preconditions": "goods.type=1 且有未售卡密；两个订单的 buy_amount 均能通过创建检查；两次 completedOrder 的 SELECT/UPDATE 窗口重叠",
+      "summary": "withGoodsByAmountAndStatusUnsold 用普通一致读 take(N)，无 orderBy/lockForUpdate；soldByIDS 的 UPDATE 缺少 status=UNSOLD 的 CAS 谓词且忽略影响行数。两个并发事务可读到同一批未售卡密，同一卡密文本被写入两个已支付订单并分别邮寄；MySQL 报告 0 changed rows，不抛异常，状态静默不一致。附带缺陷：读侧未过滤 is_loop=0。",
+      "evidence": [
+        "app/Service/CarmisService.php:29-37 where(status=UNSOLD)->take($byAmount)->get()，无锁",
+        "app/Service/CarmisService.php:49-52 whereIn(id)->where('is_loop',0)->update(status=SOLD)，缺 status CAS",
+        "app/Service/OrderProcessService.php:512-526 分配、写入 info、发信、标记已售",
+        "app/Service/OrderProcessService.php:514 count 检查基于过期快照",
+        "app/Http/Middleware/PayGateWay.php:17-20 pass-through，无序列化",
+        "database/sql/install.sql:253-264 carmis 无唯一/状态约束"
+      ],
+      "remediation": "在完成事务内 lockForUpdate()+orderBy('id') 读取候选行；或 CAS 更新 where(status=UNSOLD) 并断言影响行数等于 N，不等则抛异常回滚为 STATUS_ABNORMAL；读侧补齐 is_loop=0；可选以 goods 行为序列化点。",
+      "verdict": "isReal=true; verifier confidence 0.82; 交错过程按 InnoDB 语义推导，未做动态并发验证（MODE=static）。"
+    },
+    {
+      "id": "CFGSC-10",
+      "title": "dcat-admin 上传接口按客户端扩展名落盘到 public/uploads 且无白名单，PHP 执行仅由 nginx location 阻断；SVG/HTML 构成同源存储型内容投放",
+      "severity": "medium",
+      "severityScore": 5.4,
+      "cvss31": "CVSS:3.1/AV:N/AC:L/PR:H/UI:R/S:C/C:L/I:L/A:N",
+      "cwe": [
+        "CWE-434",
+        "CWE-79"
+      ],
+      "file": "config/admin.php",
+      "line": 262,
+      "reachability": "authenticated-admin",
+      "confidence": 0.8,
+      "preconditions": "有效管理员会话（默认安装可能仍为出厂弱口令）；RCE 分支还需 ^~ /uploads/ 拒绝规则缺失/被绕过（Apache、artisan serve、自定义反代）",
+      "summary": "dcat 的 tinymce/editor-md/form 上传接口不校验扩展名，落盘名取 getClientOriginalExtension()；disk 'admin' 根为 public_path('uploads') 且被 Web 直接服务。nginx 仅拒绝 .php 与点文件，SVG/HTML 原生返回，且全站无 CSP，可读取非 HttpOnly 的 XSRF-TOKEN 并对同源发起带凭据请求。Permission 中间件放行所有 dcat-api.* 路由，零权限管理员亦可上传。",
+      "evidence": [
+        "config/admin.php:262-272 upload.disk=admin，目录 images/files",
+        "config/filesystems.php:72-77 admin disk 根为 public_path('uploads')",
+        "vendor/dcat/laravel-admin/src/Http/Controllers/TinymceController.php:12-28 扩展名取客户端值",
+        "vendor/dcat/laravel-admin/src/Http/Controllers/EditorMDController.php:12-28 同上",
+        "vendor/dcat/laravel-admin/src/Form/Field/UploadField.php:343-354 无规则则跳过校验",
+        "conf/default.conf:26-33 仅拒绝点文件与 \\.php$",
+        "conf/dujiaoka-nginx.conf:10-19 同上",
+        "vendor/dcat/laravel-admin/src/Http/Middleware/Permission.php:96-99 dcat-api.* 免授权",
+        "config/admin.php:74 管理路由中间件 ['web','admin','admin.force-password']（CSRF 生效）"
+      ],
+      "remediation": "服务端强制 MIME/扩展名白名单，落盘扩展名由检测出的 MIME 推导；忽略客户端 dir/disk；为 /uploads 增加 CSP(sandbox) 与 Content-Disposition，或将上传迁至无 Cookie 独立域；显式设置 security.limit_extensions；不再豁免 dcat-api.* 的授权。",
+      "verdict": "isReal=true; verifier confidence 0.80; RCE 分支在出厂配置下不成立（nginx 阻断 + fpm 绑回环），主要影响为同源存储内容；故以 medium 评级并标注部署依赖。"
+    },
+    {
+      "id": "PQ-02",
+      "title": "completedOrder() 无行锁/唯一约束，OrderExpired 无条件 UPDATE：重复回调产生重复副作用，过期任务可把已付款订单覆盖为过期",
+      "severity": "low",
+      "severityScore": 3.7,
+      "cvss31": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
+      "cwe": [
+        "CWE-362",
+        "CWE-367"
+      ],
+      "file": "app/Service/OrderProcessService.php",
+      "line": 395,
+      "reachability": "anonymous",
+      "confidence": 0.72,
+      "preconditions": "install.lock 存在；网关重试/两次同时通知，或支付通知恰好落在过期任务读取与写入之间的毫秒级窗口",
+      "summary": "completedOrder 事务内 detailOrderSN 为普通 first()，无 lockForUpdate/条件 UPDATE；orders.trade_no 无唯一索引，:411-417 的存在性检查只是建议性的；OrderExpired 的 status==WAIT_PAY 检查与 expiredOrderSN 的无条件 UPDATE 分离。InnoDB 快照读下，过期任务可把已支付订单改为 STATUS_EXPIRED 并回退优惠券。触发不受攻击者控制，概率约 1e-4 量级，顺序重试已幂等。",
+      "evidence": [
+        "app/Service/OrderProcessService.php:392-434 事务内读-判-写，无 lockForUpdate",
+        "app/Service/OrderService.php:212-216 detailOrderSN 普通 first()",
+        "app/Service/OrderService.php:228-231 expiredOrderSN 仅按 order_sn 无条件 update",
+        "app/Jobs/OrderExpired.php:53-59 检查与写入分离",
+        "database/sql/install.sql:444-472 trade_no 无唯一索引",
+        "app/Service/OrderProcessService.php:399-410 顺序重复回调已幂等"
+      ],
+      "remediation": "过期改为 where(status,WAIT_PAY)->update 并据影响行数决定是否回补优惠券；completedOrder 内改用 lockForUpdate 或条件 UPDATE；为 trade_no 增加唯一索引（含存量兼容策略）；卡密分配改为原子领取。",
+      "verdict": "isReal=true; verifier confidence 0.72; 代码缺陷真实，但触发不可控、窗口极小、危害有限，从 medium 下调为 low。"
+    },
+    {
+      "id": "PQ-07",
+      "title": "goods.api_hook（管理员配置）逐字传入 file_get_contents()，无 scheme/host 校验并携带订单 PII",
+      "severity": "low",
+      "severityScore": 3.1,
+      "cvss31": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:C/C:L/I:N/A:N",
+      "cwe": [
+        "CWE-918"
+      ],
+      "file": "app/Jobs/ApiHook.php",
+      "line": 85,
+      "reachability": "admin-configured",
+      "confidence": 0.72,
+      "preconditions": "api_hook 由已认证管理员写入（默认 NULL，任务提前返回）；商品在售且有订单进入 completedOrder；未禁用 allow_url_fopen",
+      "summary": "api_hook 由 Dcat 商品表单裸 textarea 写入，无 rules/校验；Jobs/ApiHook 构造 POST/JSON 上下文后 file_get_contents($api_hook)，无 scheme 允许列表、无内网/链路本地拒绝、无重定向限制，请求从队列 worker 发出，body 含订单邮箱/金额/卡密信息。返回体被丢弃（盲），且写路径为最高权限管理员，故仅构成加固缺陷。与既有 PQ-008 同源（同一文件:行）。",
+      "evidence": [
+        "app/Jobs/ApiHook.php:60-85 api_hook 作为 URL 逐字使用，返回值丢弃",
+        "app/Admin/Controllers/GoodsController.php:155 裸 textarea，无 rules",
+        "app/Service/GoodsService.php:65-73 plain first()",
+        "app/Service/OrderProcessService.php:452 无条件 dispatch ApiHook",
+        "config/admin.php:74 写路径需管理员会话 + CSRF",
+        "conf/php.ini 未设置 allow_url_fopen/open_basedir/disable_functions",
+        "conf/supervisord.conf:32 queue worker 真实运行"
+      ],
+      "remediation": "统一出站请求守卫（https-only、解析后拒绝内网/回环/链路本地、固定解析 IP、禁跨主机重定向、超时与响应大小上限）；写路径加 nullable|url:http,https 并服务端复核；只发送 order_sn + HMAC；同样处理 BarkPush/ServerJiang。",
+      "verdict": "isReal=true; verifier confidence 0.72; 源码为高权限、默认惰性、响应盲，从 medium 降为 low，并建议与 PQ-008 合并去重。"
+    },
+    {
+      "id": "PQ-08-F1",
+      "title": "Session Cookie 默认不带 Secure（SESSION_SECURE_COOKIE=false / null），Symfony HTTPS 自动加 Secure 的路径被显式 false 关闭",
+      "severity": "low",
+      "severityScore": 3.1,
+      "cvss31": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:N/A:N",
+      "cwe": [
+        "CWE-614",
+        "CWE-1188"
+      ],
+      "file": "config/session.php",
+      "line": 169,
+      "reachability": "anonymous",
+      "confidence": 0.68,
+      "preconditions": "站点以明文 HTTP 暴露，或攻击者能对 HTTPS 站点诱发 http:// 降级；Cookie 未手工置 true",
+      "summary": ".env.example 出厂写 SESSION_SECURE_COOKIE=false，Env::getOption 将其转为布尔 false，StartSession 用它构造 Cookie；因 false 非 null，Symfony secureDefault 自动标记无法覆盖，Set-Cookie 永不带 secure。HttpOnly 与 SameSite=Lax 均已开启。verifier 证伪原报告“Laravel 永不触达 prepare()”的论点：Router::runRoute 会调用 prepareResponse->Response::prepare，因此正确修复是恢复 null 自动检测而非硬编码 true（仓库参考部署为纯 HTTP）。",
+      "evidence": [
+        ".env.example:69 SESSION_SECURE_COOKIE=false",
+        "config/session.php:169 'secure' => env('SESSION_SECURE_COOKIE', null)",
+        "vendor/laravel/framework/src/Illuminate/Session/Middleware/StartSession.php:221-236 以该值构造 Cookie",
+        "vendor/symfony/http-foundation/Cookie.php:301-303、373-376 false 非 null 时不追加 secure",
+        "vendor/laravel/framework/src/Illuminate/Routing/Router.php:799、946 实际调用 Response::prepare",
+        "conf/default.conf:2 listen 80；docker-compose.yml 发布 80:80",
+        "app/Http/Middleware/SecurityHeaders.php:20-22 HSTS 仅在请求已安全时输出"
+      ],
+      "remediation": "config 改为 env('SESSION_SECURE_COOKIE')（null 自动检测）；移除 .env.example 的 false 并加注释；代理终止 TLS 时说明需配置 TRUSTED_PROXIES；边缘加 301 + HSTS；加回归测试断言 HTTPS 请求 Set-Cookie 含 secure。",
+      "verdict": "isReal=true; verifier confidence 0.68; 不安全默认值成立，但“自动安全路径是死代码”的论据被证伪，故降为 low。"
+    },
+    {
+      "id": "PQ-08-F2",
+      "title": "管理员改密不吊销其它会话（AuthenticateSession 被注释、remember 开启、改密路径无 logoutOtherDevices/cycleRememberToken）",
+      "severity": "low",
+      "severityScore": 3.5,
+      "cvss31": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:N/A:N",
+      "cwe": [
+        "CWE-613"
+      ],
+      "file": "app/Http/Kernel.php",
+      "line": 38,
+      "reachability": "authenticated-admin",
+      "confidence": 0.72,
+      "preconditions": "攻击者已持有有效管理员会话或 remember cookie；合法管理员通过后台改密；未手工清空会话存储",
+      "summary": "web 组中 AuthenticateSession 被注释，且从未为 admin guard 注册；改密路径只写 bcrypt 哈希，无 logoutOtherDevices/cycleRememberToken。已存在的会话在改密后继续通过仅检查 guest() 的 admin 中间件，可无限期活跃。verifier 证伪“remember cookie 长期有效”一节：Laravel 12 的 recaller 第三段是密码哈希的 HMAC，改密后旧 remember cookie 自动失效。",
+      "evidence": [
+        "app/Http/Kernel.php:38 AuthenticateSession 被注释（:87 仅为优先级列表）",
+        "vendor/dcat/laravel-admin/src/Http/Middleware/Authenticate.php:19-29 仅 guest() 判定",
+        "app/Admin/Controllers/AuthController.php:46-76 改密无会话吊销",
+        "vendor/laravel/framework/src/Illuminate/Auth/SessionGuard.php:224-241 recaller 校验当前密码哈希（旧 cookie 失效）",
+        "config/admin.php:152 remember=true",
+        "config/session.php:34 lifetime=120 滑动过期"
+      ],
+      "remediation": "为 admin_users 增加 session_version/password_changed_at，改密时同事务递增，并在 admin 中间件校验不符即登出+invalidate；登录时写入该版本号；不要仅依赖 AuthenticateSession（其绑定默认 guard）；提供“登出所有设备”。",
+      "verdict": "isReal=true; verifier confidence 0.72; 会话半部分成立，remember 长期持久化半部分被证伪，从 medium 降为 low。"
+    },
+    {
+      "id": "PQ-06-C",
+      "title": "商品库存在下单时校验、支付时才无守卫 decrement，订单不预留库存，in_stock 可被压成负数",
+      "severity": "low",
+      "severityScore": 3.4,
+      "cvss31": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N",
+      "cwe": [
+        "CWE-840",
+        "CWE-362"
+      ],
+      "file": "app/Service/GoodsService.php",
+      "line": 131,
+      "reachability": "anonymous",
+      "confidence": 0.78,
+      "preconditions": "人工处理类商品（type=2）且 in_stock 低于总需求；订单创建不预留库存",
+      "summary": "下单仅比较 by_amount > goods.in_stock，从不扣减；支付后 processManual 调 inStockDecr 做无 where('in_stock','>=',n) 的 decrement 且忽略返回值，且库字段为有符号 int 无 CHECK，可负。无需并发即可触发（先建两单再分别支付）。每负一单位需实付商品价，故无直接牟利，属库存完整性/超卖与低价刷单 DoS；与 PQ-06-A 组合可放大。自动发货商品不调用该扣减，不受影响。",
+      "evidence": [
+        "app/Service/OrderService.php:114 下单仅比较 by_amount > in_stock",
+        "app/Service/OrderProcessService.php:311-370 创建订单不触碰 in_stock",
+        "app/Service/GoodsService.php:131-134 decrement('in_stock',$number)，无谓词、忽略返回值",
+        "app/Service/OrderProcessService.php:477 processManual 调用该扣减",
+        "database/sql/install.sql:375 in_stock 有符号 int，无 CHECK",
+        "app/Http/Controllers/PayController.php:188-196 actual_price==0 时免支付完成（组合放大点）"
+      ],
+      "remediation": "下单时以条件更新预留库存（where('in_stock','>=',n)->decrement，0 行则中止），过期任务释放；支付时同样条件扣减；DB 加 CHECK(in_stock>=0) 或 unsigned 并写入 upgrade 脚本；对 0 元完成加限流。",
+      "verdict": "isReal=true; verifier confidence 0.78; 缺陷确定为设计性 TOCTOU，但需实付全价、无越权/无直接牟利，维持 low。"
+    }
+  ]
+}

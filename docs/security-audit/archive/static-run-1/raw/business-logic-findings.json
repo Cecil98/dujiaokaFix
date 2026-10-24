@@ -1,0 +1,104 @@
+{
+  "artifact": "business-logic-findings",
+  "audit_kind": "phase4-domain-audit-business-logic",
+  "mode": "static",
+  "target": ".",
+  "domain": "business-logic",
+  "branch": "upgrade/php83",
+  "generated_by": "php-audit-auditor (business-logic domain, static code audit)",
+  "method": "source-to-sink review of ITEM PQ-06; source code read only, no HTTP requests sent, no container started, no application code modified",
+  "guidance_consumed": [
+    "tools/php-audit-skills/shared/anti_hallucination.md",
+    "tools/php-audit-skills/shared/evidence_contract.md",
+    "tools/php-audit-skills/shared/sink_definitions.md",
+    "tools/php-audit-skills/shared/php_specific_patterns.md",
+    "tools/php-audit-skills/shared/severity_rating.md",
+    "tools/php-audit-skills/shared/false_positive_patterns.md",
+    "tools/php-audit-skills/teams/team4/business_logic_auditor.md",
+    "tools/php-audit-skills/teams/team4/race_condition_auditor.md",
+    "tools/php-audit-skills/skills/auditors/business_logic_auditor_analyze.md",
+    "tools/php-audit-skills/skills/auditors/race_condition_auditor_analyze.md"
+  ],
+  "items_audited": [
+    "PQ-06"
+  ],
+  "environment_notes": [
+    "MODE=static. No PHP binary and no MySQL client exist in this audit environment (`which php` / `which mysql` both exit 1), so no concurrency experiment could be executed. Per anti_hallucination Rule 11 and the evidence contract (EVID_RACE_STATISTICAL_RESULT required for `confirmed`), every race finding here is capped at `suspected`.",
+    "No concurrency primitive exists anywhere in app/: `grep -rn 'lockForUpdate|sharedLock|Cache::lock|->lock(' app/ config/` returns 0 hits. Laravel's DB::beginTransaction() does not change the isolation level and config/database.php sets no isolation, so the MySQL/InnoDB default REPEATABLE-READ applies: plain SELECTs are consistent (snapshot) reads and do not block.",
+    "Laravel's file session handler does not block concurrent requests (vendor/laravel/framework/src/Illuminate/Session/FileSessionHandler.php - no flock, no session blocking middleware registered in app/Http/Kernel.php), so the POST /create-order race can be driven from a single session.",
+    "No rate limiting on the storefront: the `web` group (app/Http/Kernel.php:33-43) contains no throttle middleware; `throttle:60,1` exists only in the `api` group (app/Http/Kernel.php:45-48) which the storefront routes do not use.",
+    "Captcha is off by default: app/Rules/VerifyImg.php:29 only enforces a code when dujiaoka_config_get('is_open_img_code') == STATUS_OPEN, and no such settings row is seeded by database/sql/install.sql, so the value is null at install time.",
+    ".env values were never read or printed."
+  ],
+  "findings": [
+    {
+      "id": "PQ-06-A",
+      "item_id": "PQ-06",
+      "title": "Coupon remaining-use counter is check-then-decrement (TOCTOU) with no row lock and no `where ret > 0` guard: concurrent POST /create-order requests all consume the same coupon and all persist the discount",
+      "severity": "medium",
+      "severity_escalation": "high when a coupon's `discount` >= goods actual_price, because the discounted order then has actual_price == 0 and is auto-completed for free at app/Http/Controllers/PayController.php:188-196 (no payment at all).",
+      "confidence": 0.72,
+      "verdict": "suspected (code path fully traced; dynamic reproduction blocked by MODE=static - EVID_RACE_STATISTICAL_RESULT not obtainable)",
+      "file": "app/Service/OrderService.php",
+      "line": 165,
+      "source": "POST /create-order (routes/common/web.php:20, anonymous) fields coupon_code + gid + by_amount -> app/Http/Controllers/Home/OrderController.php:67 -> OrderService::validatorCoupon() $request->input('coupon_code') (app/Service/OrderService.php:159)",
+      "sink": "app/Service/OrderProcessService.php:358-360 CouponService::used() + CouponService::retDecr() -> `Coupon::query()->where('coupon', $coupon)->decrement('ret', 1)` (app/Service/CouponService.php:58-63), unconditioned",
+      "reachability": "Anonymous, no login required: routes/common/web.php:12-20 registers POST create-order inside the `dujiaoka.boot` group, whose only checks are install.lock, a QQ/WeChat user-agent block and locale (app/Http/Middleware/DujiaoBoot.php:17-54). CSRF applies (app/Http/Middleware/VerifyCsrfToken.php:21-26 does not exempt it) but a valid token is handed out by GET /buy/{id} (resources/views/unicorn/static_pages/buy.blade.php:54 `{{ csrf_field() }}`), so it is not a real obstacle. No throttle, captcha off by default.",
+      "preconditions": "1) An enabled coupon (is_open=1) bound to the target goods via coupons_goods with ret >= 1. 2) The coupon's discount must exceed 0 (it is subtracted from actual_price at app/Service/OrderProcessService.php:293-301). 3) Attacker must fire the requests in parallel; a single sequential request cannot exceed ret because ret is decremented after each order. 4) InnoDB/REPEATABLE-READ (default, config/database.php:18) - no isolation override exists.",
+      "impact": "Coupon usage-count limit is bypassed: N concurrent orders each receive the coupon discount while `coupons.ret` is decremented N times, ending negative (e.g. 1 -> 1-N). The discounted amount is persisted in orders.coupon_discount_price / orders.actual_price (app/Service/OrderProcessService.php:339,348-352) and is the amount actually charged (app/Http/Controllers/Pay/YipayController.php:24 `'money' => (float)$this->order->actual_price`). Because CouponBack refunds one `ret` per expired order (app/Jobs/CouponBack.php:47-55 via app/Jobs/OrderExpired.php:53-61, default order_expire_time=5 min at app/Service/OrderProcessService.php:363), the counter is restored and the same race can be repeated every expiry window: direct, repeatable revenue loss. When discount >= price, each raced order becomes a free order (actual_price clamped to 0 at app/Service/OrderProcessService.php:297-299) that auto-completes and delivers cards with no payment (app/Http/Controllers/PayController.php:188-196).",
+      "evidence": "EVID_RACE_CRITICAL_SECTION: app/Service/OrderService.php:157-168 - `if ($request->filled('coupon_code')) { $coupon = $this->couponService->withHasGoods(...); if (empty($coupon)) {...} if ($coupon->ret <= 0) { throw new RuleValidationException(...); } return $coupon; }` (read-only check). EVID_RACE_SHARED_RESOURCE: the `coupons` row, database/sql/install.sql:276-289 - `ret` int NOT NULL DEFAULT '0' COMMENT '剩余使用次数', `is_use` tinyint, UNIQUE KEY idx_coupon (`coupon`). EVID_RACE_WINDOW_ANALYSIS: check SELECT at app/Service/CouponService.php:29-35 (`Coupon::query()->whereHas('goods', ...)->where('is_open', ...)->where('coupon', $coupon)->first()`, no lockForUpdate); the writing statements are app/Service/CouponService.php:42-47 `->update(['is_use' => Coupon::STATUS_USE])` and app/Service/CouponService.php:58-63 `->where('coupon', $coupon)->decrement('ret', 1)` - no `where('ret','>',0)` predicate, so a transaction that already passed the stale check still applies the decrement after the competing transaction commits (MySQL current-read UPDATE). Both run inside the transaction opened at app/Http/Controllers/Home/OrderController.php:59, which does not help because the check is a consistent read. `used()` writes is_use but nothing ever reads is_use during order creation (grep: only app/Admin/Controllers/CouponController.php reads it), so no second guard exists. EVID_BIZ_BYPASS_POINT: app/Service/OrderService.php:165. EVID_BIZ_STATE_PERSISTENCE: app/Service/OrderProcessService.php:339 `$order->coupon_discount_price = $this->calculateTheCouponPrice();` + :354 `$order->save()` + :358-360 decrement. EVID_RACE_STATISTICAL_RESULT: [Not obtained: MODE=static, no HTTP/container access] -> verdict capped at suspected.",
+      "remediation": "Make the consumption atomic and single-statement: replace used()+retDecr() with `$affected = Coupon::where('coupon',$code)->where('ret','>',0)->where('is_open',1)->decrement('ret',1)` inside the same DB transaction and throw RuleValidationException when $affected === 0, so the order insert is rolled back (DB::rollBack at app/Http/Controllers/Home/OrderController.php:89). Alternatively re-read the coupon with `->lockForUpdate()` at app/Service/CouponService.php:29-35 before the check. Also enforce is_use in withHasGoods, store the coupon discount on the order only after the atomic decrement succeeds, and add a Redis/DB lock (Cache::lock) or a unique constraint on (coupon_id) for one-time coupons."
+    },
+    {
+      "id": "PQ-06-B",
+      "item_id": "PQ-06",
+      "title": "Card (carmi) allocation uses a non-locking `take(N)` SELECT followed by an unguarded UPDATE, so two concurrent payment completions for the same goods can be shipped the same card",
+      "severity": "medium",
+      "confidence": 0.6,
+      "verdict": "suspected (code path fully traced; dynamic reproduction blocked by MODE=static)",
+      "file": "app/Service/CarmisService.php",
+      "line": 29,
+      "source": "Payment-notification path that reaches OrderProcessService::completedOrder() -> processAuto(): routes/common/pay.php:18,21,25,28,32,41,44,48 -> e.g. app/Http/Controllers/Pay/YipayController.php:101 `$this->orderProcessService->completedOrder($out_trade_no, $money, $trade_no)`",
+      "sink": "app/Service/OrderProcessService.php:512 `$this->carmisService->withGoodsByAmountAndStatusUnsold(...)` -> app/Service/CarmisService.php:29-37 `->take($byAmount)->get()` -> app/Service/CarmisService.php:49-52 `->whereIn('id', $ids)->where('is_loop', 0)->update(['status' => Carmis::STATUS_SOLD])`",
+      "reachability": "Anonymous reachable through the public payment callbacks (GET /pay/yipay/notify_url etc., no auth middleware - app/Http/Middleware/PayGateWay.php:17-20 is a pass-through). Two different legitimate buyers, or one attacker with two orders and two valid payments, both complete orders for the same goods.",
+      "preconditions": "1) Automatic-delivery goods (goods.type = 1) with unsold carmis. 2) Two orders for that goods with buy_amount such that both pass the unsold-count check at creation time (app/Service/OrderService.php:114, where in_stock is the unsold-carmis count for auto goods: app/Models/Goods.php:69-78 + app/Service/GoodsService.php:67-72). 3) Both completedOrder() calls overlap in the window between the SELECT and the UPDATE. 4) InnoDB REPEATABLE-READ: both SELECTs are snapshot reads and see the same rows.",
+      "impact": "The same digital card is stored in the `info` field of two different paid orders (app/Service/OrderProcessService.php:520-524) and mailed to two different buyers (app/Service/OrderProcessService.php:539-542). One buyer receives a code that has already been delivered to someone else; the merchant must source a replacement or refund. Because soldByIDS() has no `status = UNSOLD` predicate the second update silently succeeds instead of failing loudly, so the inconsistency is persisted without any operator signal. Inventory accounting (sales_volume, carmis.status) no longer reflects reality.",
+      "evidence": "EVID_RACE_CRITICAL_SECTION: app/Service/OrderProcessService.php:511-526 - `$carmis = $this->carmisService->withGoodsByAmountAndStatusUnsold($order->goods_id, $order->buy_amount); if (count($carmis) != $order->buy_amount) { ... STATUS_ABNORMAL ... return $order; } $carmisInfo = array_column($carmis, 'carmi'); ... $this->carmisService->soldByIDS($ids);`. EVID_RACE_SHARED_RESOURCE: `carmis` rows, database/sql/install.sql:253-264 (status tinyint 1=unsold/2=sold, KEY idx_goods_id). EVID_RACE_WINDOW_ANALYSIS: app/Service/CarmisService.php:31-35 - `Carmis::query()->where('goods_id',$goodsID)->where('status', Carmis::STATUS_UNSOLD)->take($byAmount)->get()` has no orderBy, no `lockForUpdate()` and no `skipLocked()`; the write app/Service/CarmisService.php:49-52 filters only `whereIn('id',$ids)->where('is_loop',0)`, so the CAS predicate `status = UNSOLD` is missing; transaction is opened at app/Service/OrderProcessService.php:392 (plain DB::beginTransaction, no lock). `grep -rn 'lockForUpdate' app/` = 0 hits. EVID_BIZ_FLOW_DESCRIPTION: create-order (no allocation) -> pay -> completedOrder() -> processAuto() allocates and marks sold. EVID_BIZ_BYPASS_POINT: the count check at app/Service/OrderProcessService.php:514 is performed on a stale snapshot. EVID_BIZ_STATE_PERSISTENCE: app/Service/OrderProcessService.php:522-526 persists the card text into the order and flips the row to sold. EVID_RACE_STATISTICAL_RESULT: [Not obtained: MODE=static, no HTTP/container access] -> verdict capped at suspected.",
+      "remediation": "Allocate cards atomically: either `Carmis::where('goods_id',$id)->where('status',UNSOLD)->orderBy('id')->limit($n)->lockForUpdate()->get()` inside the completion transaction, or update-by-CAS then verify: `$affected = Carmis::whereIn('id',$ids)->where('status',Carmis::STATUS_UNSOLD)->where('is_loop',0)->update([...]); if ($affected !== $n) throw;` so the transaction rolls back and the order goes ABNORMAL. A UNIQUE index cannot express this, so the CAS + affected-rows check (or a row lock) is the practical fix; also add `status` to the soldByIDS() WHERE clause."
+    },
+    {
+      "id": "PQ-06-C",
+      "item_id": "PQ-06",
+      "title": "Goods stock is validated at order creation but only decremented at payment with an unguarded `decrement`, so orders are never reserved and in_stock can be driven negative",
+      "severity": "low",
+      "confidence": 0.45,
+      "verdict": "suspected / limited impact (requires the attacker to pay for every unit; no direct attacker gain)",
+      "file": "app/Service/GoodsService.php",
+      "line": 131,
+      "source": "POST /create-order by_amount vs goods.in_stock (anonymous)",
+      "sink": "app/Service/GoodsService.php:131-134 `Goods::query()->where('id', $id)->decrement('in_stock', $number)` called from app/Service/OrderProcessService.php:477 (manual-processing orders) - no `where('in_stock','>=',$number)` guard",
+      "reachability": "Anonymous: same storefront route as PQ-06-A. Payment completion for manual-processing goods (goods.type = 2) needs a real payment, which is why the impact is capped.",
+      "preconditions": "Manual-processing goods (type 2) with in_stock smaller than total demand. Every order that must count towards the negative stock has to be paid for.",
+      "impact": "orders are created without reserving stock, so an unlimited number of concurrent (or even purely sequential) orders may pass the `by_amount > goods.in_stock` check at app/Service/OrderService.php:114. When those orders are paid, the unguarded decrement pushes goods.in_stock negative (no CHECK constraint exists in database/sql/install.sql:373-390) and the merchant is contractually obliged to fulfil more units than it has. There is no direct attacker profit - the buyer pays the full price - so this is an inventory-integrity / oversell defect rather than a profit primitive, EXCEPT when chained with PQ-06-A (raced coupon => actual_price 0 => free completions at app/Http/Controllers/PayController.php:188-196).",
+      "evidence": "EVID_RACE_CRITICAL_SECTION: app/Service/OrderService.php:110-116 - `if ($goods->buy_limit_num > 0 && $request->input('by_amount') > $goods->buy_limit_num) {...} if ($request->input('by_amount') > $goods->in_stock) { throw new RuleValidationException(...); }` - pure read on the model loaded at :106. EVID_RACE_SHARED_RESOURCE: `goods.in_stock`, database/sql/install.sql:375 `in_stock int NOT NULL DEFAULT '0' COMMENT '库存'` (no CHECK/UNSIGNED constraint). EVID_RACE_WINDOW_ANALYSIS: between check (app/Service/OrderService.php:114) and mutation (app/Service/GoodsService.php:131-134 via app/Service/OrderProcessService.php:477) there is no reservation, no lock and no conditional predicate; order creation does not touch in_stock at all (app/Service/OrderProcessService.php:312-370), so the window is the entire order lifetime (order_expire_time, default 5 minutes). For AUTOMATIC_DELIVERY goods the effective stock comes from a withCount subquery (app/Models/Goods.php:69-78) so the same non-reservation applies. EVID_BIZ_BYPASS_POINT: app/Service/OrderService.php:114. EVID_BIZ_STATE_PERSISTENCE: goods.in_stock is decremented after payment without any floor, i.e. the value can become negative. EVID_RACE_STATISTICAL_RESULT: [Not obtained: MODE=static, no HTTP/container access].",
+      "remediation": "Reserve stock at order creation inside the existing transaction using a conditional update (`Goods::where('id',$id)->where('in_stock','>=',$n)->decrement('in_stock',$n)` and abort when affected rows === 0), then release it when OrderExpired fires (app/Jobs/OrderExpired.php). Make the payment-time decrement conditional as well so it can never cross zero, and add a non-negative CHECK/UNSIGNED constraint on goods.in_stock."
+    }
+  ],
+  "rejected": [
+    {
+      "id": "PQ-06-R1",
+      "title": "Sequential (non-concurrent) coupon reuse / unlimited coupon reuse without a race",
+      "reason": "Rejected as a standalone issue. The very first coupon gate `if ($coupon->ret <= 0)` (app/Service/OrderService.php:165) is enforced on every request and retDecr() is called on every order (app/Service/OrderProcessService.php:360), so a serial attacker is stopped at ret = 0. The only mechanism that restores the counter is CouponBack, dispatched from OrderExpired (app/Jobs/OrderExpired.php:53-61, app/Jobs/CouponBack.php:47-55), which only runs for UNPAID expired orders (status = STATUS_WAIT_PAY guard at app/Jobs/OrderExpired.php:57); it refunds exactly one unit per order that consumed one unit, so the net count never grows. No amplification is possible without concurrency, which is why the finding is filed as a race (PQ-06-A) and not as a plain logic bypass."
+    },
+    {
+      "id": "PQ-06-R2",
+      "title": "\"N parallel orders all pass the check -> oversell\" for automatic-delivery goods with no payment",
+      "reason": "Rejected as stated. Creating orders does not allocate anything: app/Service/OrderProcessService.php:312-370 only inserts the order row and decrements nothing, and card allocation is re-validated at payment time (`if (count($carmis) != $order->buy_amount)` -> STATUS_ABNORMAL, app/Service/OrderProcessService.php:514-519). An attacker who merely spams POST /create-order therefore obtains no card and no stock change; the residual defects are the duplicate-allocation race at payment time (PQ-06-B) and the unreserved/unguarded decrement (PQ-06-C), both reported separately with their real preconditions."
+    },
+    {
+      "id": "PQ-06-R3",
+      "title": "Front-end / parameter-level coupon or amount tampering (e.g. passing coupon_code or by_amount not intended by the shop)",
+      "reason": "Rejected as a business-logic bug: no client-supplied price, discount or total is trusted. goods_price/total_price/actual_price are all recomputed server side from the Goods row (app/Service/OrderProcessService.php:229-301,331-352) and by_amount is re-validated against goods.buy_limit_num and stock (app/Service/OrderService.php:110-116). Only the concurrency semantics are defective, which is what PQ-06-A/B/C cover."
+    }
+  ]
+}

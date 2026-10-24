@@ -1,0 +1,4536 @@
+{
+ "artifact": "routes-auth",
+ "phase": "P1-recon",
+ "target": ".",
+ "mode": "static",
+ "determinism_note": "generated from `php artisan route:list --json` inside webdevops/php:8.3 with the repository mounted at /app; no timestamps embedded",
+ "framework": {
+  "name": "laravel/framework",
+  "version_constraint": "^12.69 (composer.json)",
+  "php_platform": "webdevops/php:8.3 (host has no php binary)",
+  "admin_package": "dcat/laravel-admin 2.2.5 (custom VCS fork, composer.json repositories)",
+  "route_registration": {
+   "web": "app/Providers/RouteServiceProvider.php:59-64 -> routes/web.php",
+   "routes/web.php loader": "routes/web.php:14-21 globs routes/common/*.php",
+   "api": "app/Providers/RouteServiceProvider.php:73-79 -> routes/api.php (prefix /api, middleware api)",
+   "admin": "app/Admin/routes.php:7-25 (Admin::routes() + resource routes) with config/admin.php:70,74"
+  }
+ },
+ "route_counts": {
+  "total": 142,
+  "by_owner": {
+   "app_public": 41,
+   "app_admin_controllers": 6,
+   "dcat_admin_vendor": 89,
+   "spatie_ignition": 3,
+   "mews_captcha": 2,
+   "closure": 1
+  },
+  "by_auth_level": {
+   "anonymous": 46,
+   "admin": 95,
+   "authenticated": 1
+  },
+  "by_middleware_set": {
+   "Dcat\\Admin\\Http\\Middleware\\Application:admin, admin, admin.force-password, web": 95,
+   "dujiaoka.pay_gate_way, web": 25,
+   "dujiaoka.boot, web": 11,
+   "web": 5,
+   "Spatie\\LaravelIgnition\\Http\\Middleware\\RunnableSolutionsEnabled": 3,
+   "install.check, web": 2,
+   "api, auth:api": 1
+  },
+  "csrf_exempt_count": 6
+ },
+ "middleware_inventory": {
+  "global": [
+   "App\\Http\\Middleware\\TrustProxies",
+   "Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance",
+   "Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize",
+   "App\\Http\\Middleware\\TrimStrings",
+   "Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull",
+   "App\\Http\\Middleware\\DujiaoSystem"
+  ],
+  "global_evidence": "app/Http/Kernel.php:19-26",
+  "group_web": [
+   "App\\Http\\Middleware\\EncryptCookies",
+   "Illuminate\\Cookie\\Middleware\\AddQueuedCookiesToResponse",
+   "Illuminate\\Session\\Middleware\\StartSession",
+   "Illuminate\\View\\Middleware\\ShareErrorsFromSession",
+   "App\\Http\\Middleware\\VerifyCsrfToken",
+   "Illuminate\\Routing\\Middleware\\SubstituteBindings",
+   "App\\Http\\Middleware\\SecurityHeaders"
+  ],
+  "group_web_evidence": "app/Http/Kernel.php:34-43 (AuthenticateSession commented out at line 38)",
+  "group_api": [
+   "throttle:60,1",
+   "Illuminate\\Routing\\Middleware\\SubstituteBindings"
+  ],
+  "group_api_evidence": "app/Http/Kernel.php:45-48",
+  "aliases": {
+   "auth": "App\\Http\\Middleware\\Authenticate",
+   "auth.basic": "AuthenticateWithBasicAuth",
+   "bindings": "SubstituteBindings",
+   "can": "Authorize",
+   "guest": "RedirectIfAuthenticated",
+   "password.confirm": "RequirePassword",
+   "signed": "ValidateSignature",
+   "throttle": "ThrottleRequests",
+   "verified": "EnsureEmailIsVerified",
+   "dujiaoka.boot": "App\\Http\\Middleware\\DujiaoBoot",
+   "dujiaoka.pay_gate_way": "App\\Http\\Middleware\\PayGateWay",
+   "install.check": "App\\Http\\Middleware\\InstallCheck",
+   "admin.force-password": "App\\Http\\Middleware\\ForceAdminPasswordChange",
+   "evidence": "app/Http/Kernel.php:58-73"
+  },
+  "vendor_admin_group": {
+   "alias_admin_expands_to": [
+    "admin.auth",
+    "admin.pjax",
+    "admin.bootstrap",
+    "admin.permission",
+    "admin.session",
+    "admin.upload"
+   ],
+   "evidence": "vendor/dcat/laravel-admin/src/AdminServiceProvider.php:70-88"
+  },
+  "notes": [
+   "App\\Http\\Middleware\\PayGateWay::handle is a pass-through with no checks (app/Http/Middleware/PayGateWay.php:17-19) — pay routes have no authentication, only in-controller signature checks.",
+   "App\\Http\\Middleware\\DujiaoBoot redirects every non-installed request to /install when install.lock is missing (app/Http/Middleware/DujiaoBoot.php:20-23). install.lock is not present in the repository working tree.",
+   "SecurityHeaders adds nosniff/X-Frame-Options/Referrer-Policy/Permissions-Policy and HSTS on secure requests (app/Http/Middleware/SecurityHeaders.php:15-23)."
+  ]
+ },
+ "admin_auth": {
+  "guard": "admin (session driver, provider admin -> Dcat\\Admin\\Models\\Administrator)",
+  "guard_evidence": "config/admin.php:130-152 (guard at :135); merged into auth config by vendor/dcat/laravel-admin/src/AdminServiceProvider.php:185",
+  "route_prefix": "config('admin.route.prefix'), env ADMIN_ROUTE_PREFIX default 'admin'",
+  "prefix_evidence": "config/admin.php:70",
+  "route_middleware": [
+   "web",
+   "admin",
+   "admin.force-password"
+  ],
+  "middleware_evidence": "config/admin.php:74",
+  "auth_middleware_behaviour": "Dcat\\Admin\\Http\\Middleware\\Authenticate returns admin_redirect(auth/login, 401) for guests unless path is in admin.auth.except (vendor/dcat/laravel-admin/src/Http/Middleware/Authenticate.php:19-30); except list = auth/login, auth/logout (config/admin.php:156-159).",
+  "permission_layer": {
+   "enabled": true,
+   "evidence": "config/admin.php:214-226",
+   "except_paths": [
+    "/",
+    "auth/login",
+    "auth/logout",
+    "auth/setting"
+   ],
+   "behaviour": "Dcat\\Admin\\Http\\Middleware\\Permission passes through when no user, args given, permission disabled, path excepted, user->isAdministrator(), or a route-level admin.permission:* middleware ran; otherwise requires a matching permission or Checker::error() (vendor/dcat/laravel-admin/src/Http/Middleware/Permission.php:27-49)."
+  },
+  "forced_password_change": "App\\Http\\Middleware\\ForceAdminPasswordChange flags sessions whose admin password still verifies against the literal \"admin\" and redirects everything except auth/setting, auth/logout, auth/login (app/Http/Middleware/ForceAdminPasswordChange.php:12-46).",
+  "login_rate_limit": "5 attempts / 60s per lowercased username + IP, RateLimiter (app/Admin/Controllers/AuthController.php:17-25); password minimum 10 chars on change (:51-55) and \"admin\" rejected (:57-61).",
+  "admin_route_owner": "All 89 Dcat routes plus 6 App\\Admin routes are under the same guard; admin user with isAdministrator() bypasses permission checks — a single admin-account compromise yields full admin surface."
+ },
+ "csrf": {
+  "middleware": "App\\Http\\Middleware\\VerifyCsrfToken (app/Http/Kernel.php:40)",
+  "except": [
+   "pay/*/notify_url",
+   "pay/*/return_url"
+  ],
+  "except_evidence": "app/Http/Middleware/VerifyCsrfToken.php:21-26 (comment at :22-23 explains pay/* is intentionally not blanket-exempted)",
+  "exempt_effective_routes": [
+   "/pay/coinbase/notify_url",
+   "/pay/epusdt/notify_url",
+   "/pay/mapay/notify_url",
+   "/pay/payjs/notify_url",
+   "/pay/paysapi/notify_url",
+   "/pay/tokenpay/notify_url"
+  ],
+  "cookie": {
+   "http_only": "env('SESSION_HTTP_ONLY', true) -> config value true",
+   "secure": "env('SESSION_SECURE_COOKIE', null)",
+   "same_site": "env('SESSION_SAME_SITE', 'lax')",
+   "encrypt_session_payload": false,
+   "evidence": "config/session.php:49,169,182,197",
+   "runtime_observed": {
+    "http_only": true,
+    "same_site": "lax",
+    "secure": null,
+    "session_driver": "file"
+   },
+   "runtime_evidence": "config value dump via artisan bootstrap (no secrets read)"
+  },
+  "encrypt_cookies": "All cookies encrypted: EncryptCookies::$except is empty (app/Http/Middleware/EncryptCookies.php:14-16); dujiaoka_orders order-list cookie therefore cannot be forged without APP_KEY.",
+  "notes": [
+   "CSRF protection is inherited by every web-group route, including /admin; only pay/*/notify_url and pay/*/return_url are exempt.",
+   "State-changing endpoints reachable with safe methods (GET) bypass CSRF entirely: pay/yipay/notify_url, pay/vpay/notify_url, pay/stripe/check, pay/stripe/charge, pay/stripe/return_url, pay-gateway/*. These rely solely on in-controller order/signature checks."
+  ]
+ },
+ "install_flow": {
+  "routes": [
+   "/do-install",
+   "/install"
+  ],
+  "middleware": [
+   "web",
+   "install.check"
+  ],
+  "gate": "App\\Http\\Middleware\\InstallCheck redirects to / when install.lock exists (app/Http/Middleware/InstallCheck.php:20-22); symmetric gate in DujiaoBoot redirects to /install when absent (app/Http/Middleware/DujiaoBoot.php:20-23).",
+  "state_effects": "do-install validates inputs, writes .env (generates APP_KEY), imports database/sql/install.sql, sets admin username/password (bcrypt), writes install.lock (app/Http/Controllers/Home/HomeController.php:132-228).",
+  "auth_level": "anonymous (no authentication, only install.lock gate)",
+  "risk_note": "On a fresh deployment before install.lock exists, any network client can re-run installation and overwrite .env / admin credentials; the only protection is the file lock and CSRF token."
+ },
+ "upload_endpoints": [
+  {
+   "uri": "/admin/dcat-api/form/upload",
+   "method": "POST",
+   "action": "Dcat\\Admin\\Http\\Controllers\\HandleFormController@uploadFile",
+   "auth_level": "admin",
+   "middleware": "web,admin,admin.force-password",
+   "evidence": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php (uploadFile); route in artisan route:list as dcat.admin.dcat-api.form.upload"
+  },
+  {
+   "uri": "/admin/dcat-api/editor-md/upload",
+   "method": "POST",
+   "action": "Dcat\\Admin\\Http\\Controllers\\EditorMDController@upload",
+   "auth_level": "admin",
+   "middleware": "web,admin,admin.force-password",
+   "evidence": "artisan route:list dcat.admin.dcat-api.editor-md.upload"
+  },
+  {
+   "uri": "/admin/dcat-api/tinymce/upload",
+   "method": "POST",
+   "action": "Dcat\\Admin\\Http\\Controllers\\TinymceController@upload",
+   "auth_level": "admin",
+   "middleware": "web,admin,admin.force-password",
+   "evidence": "artisan route:list dcat.admin.dcat-api.tinymce.upload"
+  }
+ ],
+ "upload_notes": "No upload/import endpoints exist on public (non-admin) routes: grep for \"upload\" in routes/ and app/Http/Controllers returned no matches. Upload surface is confined to the three Dcat admin endpoints above plus admin extension installation (admin/auth/extensions).",
+ "public_state_changing_endpoints": [
+  {
+   "uri": "/pay/yipay/notify_url",
+   "method": "GET",
+   "effect": "completes order (OrderProcessService::completedOrder)",
+   "guard": "MD5 signature with gateway secret + hash_equals",
+   "evidence": "app/Http/Controllers/Pay/YipayController.php:59-111"
+  },
+  {
+   "uri": "/pay/vpay/notify_url",
+   "method": "GET",
+   "effect": "completes order",
+   "guard": "MD5 signature over payId/param/type/price/reallyPrice + secret",
+   "evidence": "app/Http/Controllers/Pay/VpayController.php:52-87"
+  },
+  {
+   "uri": "/pay/stripe/check",
+   "method": "GET",
+   "effect": "creates Stripe Charge and completes order",
+   "guard": "Stripe Source state/currency/amount/owner checks; optional HMAC context token",
+   "evidence": "app/Http/Controllers/Pay/StripeController.php:473-522"
+  },
+  {
+   "uri": "/pay/stripe/charge",
+   "method": "GET",
+   "effect": "creates Stripe Charge",
+   "guard": "order id + stripeToken; optional context token",
+   "evidence": "app/Http/Controllers/Pay/StripeController.php:524-558"
+  },
+  {
+   "uri": "/pay/stripe/return_url",
+   "method": "GET",
+   "effect": "may create Stripe Charge and complete order",
+   "guard": "Stripe Source checks; optional context token",
+   "evidence": "app/Http/Controllers/Pay/StripeController.php:434-471"
+  },
+  {
+   "uri": "/pay-gateway/{payway}/{orderSN}",
+   "method": "GET",
+   "effect": "zero-amount orders are completed immediately; otherwise redirect",
+   "guard": "order must exist, be unpaid, and pay_id must match gateway",
+   "evidence": "app/Http/Controllers/PayController.php:180-206"
+  },
+  {
+   "uri": "/create-order",
+   "method": "POST",
+   "effect": "creates order, decrements stock, issues card secrets/coupons",
+   "guard": "CSRF token; no authentication",
+   "evidence": "app/Http/Controllers/Home/OrderController.php:57-92"
+  },
+  {
+   "uri": "/do-install",
+   "method": "POST",
+   "effect": "writes .env/install.sql/admin password/install.lock",
+   "guard": "install.check only (no auth) + CSRF",
+   "evidence": "app/Http/Controllers/Home/HomeController.php:132-228"
+  },
+  {
+   "uri": "/pay/mapay/notify_url",
+   "method": "POST",
+   "effect": "completes order",
+   "guard": "MD5 sign + secureCompare",
+   "evidence": "app/Http/Controllers/Pay/MapayController.php:54-83"
+  },
+  {
+   "uri": "/pay/paysapi/notify_url",
+   "method": "POST",
+   "effect": "completes order",
+   "guard": "MD5 sign + secureCompare",
+   "evidence": "app/Http/Controllers/Pay/PaysapiController.php:81-110"
+  },
+  {
+   "uri": "/pay/payjs/notify_url",
+   "method": "POST",
+   "effect": "completes order",
+   "guard": "Payjs::notify() verification (vendor package)",
+   "evidence": "app/Http/Controllers/Pay/PayjsController.php:49-75"
+  },
+  {
+   "uri": "/pay/coinbase/notify_url",
+   "method": "POST",
+   "effect": "completes order",
+   "guard": "HMAC-SHA256 over raw body",
+   "evidence": "app/Http/Controllers/Pay/CoinbaseController.php:81-115"
+  },
+  {
+   "uri": "/pay/epusdt/notify_url",
+   "method": "POST",
+   "effect": "completes order",
+   "guard": "epusdtSign + secureCompare",
+   "evidence": "app/Http/Controllers/Pay/EpusdtController.php:71-97"
+  },
+  {
+   "uri": "/pay/tokenpay/notify_url",
+   "method": "POST",
+   "effect": "completes order",
+   "guard": "VerifySign + secureCompare",
+   "evidence": "app/Http/Controllers/Pay/TokenPayController.php:71-98"
+  }
+ ],
+ "hidden_or_diagnostic_endpoints": [
+  {
+   "uri": "/_ignition/execute-solution",
+   "method": "POST",
+   "discovery_source": "artisan route:list --json (vendor/spatie/laravel-ignition/src/ignition-routes.php:16-17)",
+   "auth_level": "anonymous",
+   "guard": "RunnableSolutionsEnabled requires app.debug=true and (env local/development or ignition.enable_runnable_solutions set)",
+   "risk": "known Ignition RCE surface if debug enabled in a reachable environment"
+  },
+  {
+   "uri": "/_ignition/update-config",
+   "method": "POST",
+   "discovery_source": "vendor/spatie/laravel-ignition/src/ignition-routes.php:19",
+   "auth_level": "anonymous",
+   "guard": "same as above"
+  },
+  {
+   "uri": "/_ignition/health-check",
+   "method": "GET",
+   "discovery_source": "vendor/spatie/laravel-ignition/src/ignition-routes.php:14",
+   "auth_level": "anonymous",
+   "guard": "same as above"
+  },
+  {
+   "uri": "/api/user",
+   "method": "GET",
+   "discovery_source": "routes/api.php:16-18",
+   "auth_level": "authenticated",
+   "guard": "auth:api token guard (config/auth.php:44-48, hash=false)"
+  },
+  {
+   "uri": "/captcha/{config?}",
+   "method": "GET",
+   "discovery_source": "vendor/mews/captcha/src/CaptchaServiceProvider.php:41-42",
+   "auth_level": "anonymous",
+   "guard": "web middleware only"
+  },
+  {
+   "uri": "/captcha/api/{config?}",
+   "method": "GET",
+   "discovery_source": "vendor/mews/captcha/src/CaptchaServiceProvider.php:41-42",
+   "auth_level": "anonymous",
+   "guard": "web middleware only"
+  },
+  {
+   "uri": "/geetest",
+   "method": "GET",
+   "discovery_source": "app/Service/Geetest/GeetestServiceProvider.php:14-15",
+   "auth_level": "anonymous",
+   "guard": "web middleware only"
+  }
+ ],
+ "auth_gap_analysis": {
+  "total_routes": 142,
+  "public_routes": 46,
+  "authenticated_routes": 1,
+  "admin_routes": 95,
+  "suspicious_routes": [
+   {
+    "uri": "/_ignition/execute-solution",
+    "issue": "UNAUTHENTICATED_DIAGNOSTIC_SINK",
+    "risk": "high",
+    "reason": "route is registered in every environment; only a runtime config guard (app.debug + env local/development) separates it from anonymous RCE"
+   },
+   {
+    "uri": "/_ignition/update-config",
+    "issue": "UNAUTHENTICATED_DIAGNOSTIC_SINK",
+    "risk": "high",
+    "reason": "same guard as execute-solution"
+   },
+   {
+    "uri": "/do-install",
+    "issue": "UNAUTHENTICATED_STATE_CHANGE",
+    "risk": "high",
+    "reason": "no authentication; overwrites .env/admin credentials when install.lock is absent"
+   },
+   {
+    "uri": "/pay/stripe/charge",
+    "issue": "STATE_CHANGE_VIA_GET",
+    "risk": "medium",
+    "reason": "creates charges via GET with optional (not required) HMAC context token"
+   },
+   {
+    "uri": "/pay/stripe/check",
+    "issue": "STATE_CHANGE_VIA_GET",
+    "risk": "medium",
+    "reason": "may complete orders via GET; context token validated only when present"
+   },
+   {
+    "uri": "/pay/yipay/notify_url",
+    "issue": "STATE_CHANGE_VIA_GET",
+    "risk": "medium",
+    "reason": "order completion over GET; relies solely on MD5 signature"
+   },
+   {
+    "uri": "/pay/vpay/notify_url",
+    "issue": "STATE_CHANGE_VIA_GET",
+    "risk": "medium",
+    "reason": "order completion over GET; relies solely on MD5 signature"
+   },
+   {
+    "uri": "/detail-order-sn/{orderSN}",
+    "issue": "NO_OWNERSHIP_CHECK",
+    "risk": "medium",
+    "reason": "order details reachable by order_sn alone, no session/email binding"
+   },
+   {
+    "uri": "/search-order-by-sn",
+    "issue": "NO_OWNERSHIP_CHECK",
+    "risk": "medium",
+    "reason": "POST lookup returning full order page by order_sn alone"
+   },
+   {
+    "uri": "/search-order-by-email",
+    "issue": "WEAK_SECOND_FACTOR",
+    "risk": "medium",
+    "reason": "search_pwd enforced only when is_open_search_pwd is open; otherwise email alone returns orders"
+   },
+   {
+    "uri": "/bill/{orderSN}",
+    "issue": "NO_OWNERSHIP_CHECK",
+    "risk": "low",
+    "reason": "checkout page by order_sn"
+   },
+   {
+    "uri": "/check-order-status/{orderSN}",
+    "issue": "STATUS_ORACLE",
+    "risk": "low",
+    "reason": "order payment state disclosed by order_sn"
+   },
+   {
+    "uri": "/admin/auth/extensions",
+    "issue": "HIGH_PRIVILEGE_SINGLE_GUARD",
+    "risk": "medium",
+    "reason": "extension install/uninstall with only admin session; no second factor"
+   }
+  ],
+  "notes": [
+   "No route in the application uses the `auth`/`auth:sanctum` alias except /api/user; the storefront is intentionally anonymous.",
+   "Admin CSRF: PUT/PATCH/DELETE admin routes are covered by the web group, so token theft/leak is the only CSRF bypass path."
+  ]
+ },
+ "non_http_entry_points": [
+  {
+   "synthetic_id": "ENTRY_CLI:pay:encrypt-secrets",
+   "entry_type": "CLI",
+   "file": "app/Console/Commands/EncryptPaySecrets.php",
+   "line": 12,
+   "signature": "pay:encrypt-secrets {--dry-run}",
+   "auth_level": "system",
+   "input_sources": [
+    "--dry-run flag"
+   ],
+   "note": "reads pays table credentials and re-writes them encrypted"
+  },
+  {
+   "synthetic_id": "ENTRY_CLI:pay:decrypt-secrets",
+   "entry_type": "CLI",
+   "file": "app/Console/Commands/DecryptPaySecrets.php",
+   "line": null,
+   "signature": "pay:decrypt-secrets (see file)",
+   "auth_level": "system",
+   "input_sources": [
+    "command options"
+   ],
+   "note": "inverse of the above; verify signature/options in follow-up"
+  },
+  {
+   "synthetic_id": "ENTRY_QUEUE:App\\Jobs\\ApiHook",
+   "entry_type": "QUEUE",
+   "file": "app/Jobs/ApiHook.php",
+   "line": null,
+   "auth_level": "system",
+   "input_sources": [
+    "job payload (SerializesModels)"
+   ],
+   "note": "webhook dispatcher job; queue payload integrity depends on queue backend"
+  },
+  {
+   "synthetic_id": "ENTRY_QUEUE:App\\Jobs\\OrderExpired",
+   "entry_type": "QUEUE",
+   "file": "app/Jobs/OrderExpired.php",
+   "line": 23,
+   "auth_level": "system",
+   "input_sources": [
+    "serialized orderSN property"
+   ],
+   "note": "closes expired orders; uses SerializesModels"
+  },
+  {
+   "synthetic_id": "ENTRY_QUEUE:App\\Jobs\\CouponBack",
+   "entry_type": "QUEUE",
+   "file": "app/Jobs/CouponBack.php",
+   "line": null,
+   "auth_level": "system",
+   "input_sources": [
+    "job payload"
+   ],
+   "note": "coupon rollback"
+  },
+  {
+   "synthetic_id": "ENTRY_QUEUE:App\\Jobs\\MailSend",
+   "entry_type": "QUEUE",
+   "file": "app/Jobs/MailSend.php",
+   "line": null,
+   "auth_level": "system",
+   "input_sources": [
+    "job payload"
+   ],
+   "note": "mail dispatch"
+  },
+  {
+   "synthetic_id": "ENTRY_QUEUE:App\\Jobs\\BarkPush",
+   "entry_type": "QUEUE",
+   "file": "app/Jobs/BarkPush.php",
+   "line": null,
+   "auth_level": "system",
+   "input_sources": [
+    "job payload"
+   ],
+   "note": "push notification"
+  },
+  {
+   "synthetic_id": "ENTRY_QUEUE:App\\Jobs\\ServerJiang",
+   "entry_type": "QUEUE",
+   "file": "app/Jobs/ServerJiang.php",
+   "line": null,
+   "auth_level": "system",
+   "input_sources": [
+    "job payload"
+   ],
+   "note": "push notification"
+  },
+  {
+   "synthetic_id": "ENTRY_QUEUE:App\\Jobs\\TelegramPush",
+   "entry_type": "QUEUE",
+   "file": "app/Jobs/TelegramPush.php",
+   "line": null,
+   "auth_level": "system",
+   "input_sources": [
+    "job payload"
+   ],
+   "note": "push notification"
+  },
+  {
+   "synthetic_id": "ENTRY_QUEUE:App\\Jobs\\WorkWeiXinPush",
+   "entry_type": "QUEUE",
+   "file": "app/Jobs/WorkWeiXinPush.php",
+   "line": null,
+   "auth_level": "system",
+   "input_sources": [
+    "job payload"
+   ],
+   "note": "push notification"
+  },
+  {
+   "synthetic_id": "ENTRY_CLI:artisan_schedule",
+   "entry_type": "CRON",
+   "file": "app/Console/Kernel.php",
+   "line": 25,
+   "auth_level": "system",
+   "input_sources": [],
+   "note": "schedule() currently registers no tasks (only a commented inspire example)"
+  }
+ ],
+ "cross_validation": {
+  "artisan_route_count": 142,
+  "manual_route_definitions": 41,
+  "matched": 41,
+  "unmatched_definitions": [],
+  "comment": "All non-Dcat application routes registered in routes/common/web.php (13), routes/common/pay.php (27) and routes/api.php (1) = 41 definitions; every one appears in `artisan route:list --json` with identical method+URI. Remaining 101 routes are framework/vendor registrations (Dcat Admin 89, Spatie Ignition 3, Mews Captcha 2, closures/framework 7... see route_counts)."
+ },
+ "evidence_refs": {
+  "artisan_route_list": "php artisan route:list --json (142 routes) via docker webdevops/php:8.3",
+  "controller_provenance": "ReflectionClass/ReflectionMethod over the autoloader resolved file+line for all 142 routes (0 unresolved, 0 missing methods)",
+  "routes_files": [
+   "routes/web.php",
+   "routes/common/web.php",
+   "routes/common/pay.php",
+   "routes/api.php",
+   "app/Admin/routes.php"
+  ],
+  "middleware_files": [
+   "app/Http/Kernel.php",
+   "app/Http/Middleware/*.php",
+   "vendor/dcat/laravel-admin/src/AdminServiceProvider.php",
+   "vendor/dcat/laravel-admin/src/Http/Middleware/{Authenticate,Permission}.php"
+  ],
+  "config_files": [
+   "config/admin.php",
+   "config/auth.php",
+   "config/session.php"
+  ]
+ },
+ "not_verified": [
+  "No dynamic HTTP requests were sent (static recon only); every auth_level is derived from middleware configuration.",
+  "Stripe/Payjs gateway-side signature semantics were not validated against live providers.",
+  "admin.isAdministrator() semantics were not traced into Dcat role model in this phase (vendor/dcat/laravel-admin Administrator::isAdministrator).",
+  "Queue backend exposure (redis/database) is out of scope for this artifact; see security-config recon."
+ ],
+ "public_route_inventory": [
+  {
+   "uri": "/",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Home\\HomeController@index",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ]
+  },
+  {
+   "uri": "/_ignition/execute-solution",
+   "method": "POST",
+   "action": "Spatie\\LaravelIgnition\\Http\\Controllers\\ExecuteSolutionController::__invoke",
+   "middleware": [
+    "Spatie\\LaravelIgnition\\Http\\Middleware\\RunnableSolutionsEnabled"
+   ]
+  },
+  {
+   "uri": "/_ignition/health-check",
+   "method": "GET|HEAD",
+   "action": "Spatie\\LaravelIgnition\\Http\\Controllers\\HealthCheckController::__invoke",
+   "middleware": [
+    "Spatie\\LaravelIgnition\\Http\\Middleware\\RunnableSolutionsEnabled"
+   ]
+  },
+  {
+   "uri": "/_ignition/update-config",
+   "method": "POST",
+   "action": "Spatie\\LaravelIgnition\\Http\\Controllers\\UpdateConfigController::__invoke",
+   "middleware": [
+    "Spatie\\LaravelIgnition\\Http\\Middleware\\RunnableSolutionsEnabled"
+   ]
+  },
+  {
+   "uri": "/bill/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Home\\OrderController@bill",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ]
+  },
+  {
+   "uri": "/buy/{id}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Home\\HomeController@buy",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ]
+  },
+  {
+   "uri": "/captcha/api/{config?}",
+   "method": "GET|HEAD",
+   "action": "Mews\\Captcha\\CaptchaController@getCaptchaApi",
+   "middleware": [
+    "web"
+   ]
+  },
+  {
+   "uri": "/captcha/{config?}",
+   "method": "GET|HEAD",
+   "action": "Mews\\Captcha\\CaptchaController@getCaptcha",
+   "middleware": [
+    "web"
+   ]
+  },
+  {
+   "uri": "/check-geetest",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Home\\HomeController@geetest",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ]
+  },
+  {
+   "uri": "/check-order-status/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Home\\OrderController@checkOrderStatus",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ]
+  },
+  {
+   "uri": "/create-order",
+   "method": "POST",
+   "action": "App\\Http\\Controllers\\Home\\OrderController@createOrder",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ]
+  },
+  {
+   "uri": "/detail-order-sn/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Home\\OrderController@detailOrderSN",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ]
+  },
+  {
+   "uri": "/do-install",
+   "method": "POST",
+   "action": "App\\Http\\Controllers\\Home\\HomeController@doInstall",
+   "middleware": [
+    "web",
+    "install.check"
+   ]
+  },
+  {
+   "uri": "/geetest",
+   "method": "GET|HEAD",
+   "action": "App\\Service\\Geetest\\GeetestController@getGeetest",
+   "middleware": [
+    "web"
+   ]
+  },
+  {
+   "uri": "/install",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Home\\HomeController@install",
+   "middleware": [
+    "web",
+    "install.check"
+   ]
+  },
+  {
+   "uri": "/order-search",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Home\\OrderController@orderSearch",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ]
+  },
+  {
+   "uri": "/pay-gateway/{handle}/{payway}/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\PayController@redirectGatewayLegacy",
+   "middleware": [
+    "web"
+   ]
+  },
+  {
+   "uri": "/pay-gateway/{payway}/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\PayController@redirectGateway",
+   "middleware": [
+    "web"
+   ]
+  },
+  {
+   "uri": "/pay/coinbase/notify_url",
+   "method": "POST",
+   "action": "App\\Http\\Controllers\\Pay\\CoinbaseController@notifyUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/coinbase/{payway}/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\CoinbaseController@gateway",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/epusdt/notify_url",
+   "method": "POST",
+   "action": "App\\Http\\Controllers\\Pay\\EpusdtController@notifyUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/epusdt/return_url",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\EpusdtController@returnUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/epusdt/{payway}/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\EpusdtController@gateway",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/mapay/notify_url",
+   "method": "POST",
+   "action": "App\\Http\\Controllers\\Pay\\MapayController@notifyUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/mapay/{payway}/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\MapayController@gateway",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/payjs/notify_url",
+   "method": "POST",
+   "action": "App\\Http\\Controllers\\Pay\\PayjsController@notifyUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/payjs/{payway}/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\PayjsController@gateway",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/paysapi/notify_url",
+   "method": "POST",
+   "action": "App\\Http\\Controllers\\Pay\\PaysapiController@notifyUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/paysapi/return_url",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\PaysapiController@returnUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/paysapi/{payway}/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\PaysapiController@gateway",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/stripe/charge",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\StripeController@charge",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/stripe/check",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\StripeController@check",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/stripe/return_url",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\StripeController@returnUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/stripe/{payway}/{oid}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\StripeController@gateway",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/tokenpay/notify_url",
+   "method": "POST",
+   "action": "App\\Http\\Controllers\\Pay\\TokenPayController@notifyUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/tokenpay/return_url",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\TokenPayController@returnUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/tokenpay/{payway}/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\TokenPayController@gateway",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/vpay/notify_url",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\VpayController@notifyUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/vpay/return_url",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\VpayController@returnUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/vpay/{payway}/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\VpayController@gateway",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/yipay/notify_url",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\YipayController@notifyUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/yipay/return_url",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\YipayController@returnUrl",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/pay/yipay/{payway}/{orderSN}",
+   "method": "GET|HEAD",
+   "action": "App\\Http\\Controllers\\Pay\\YipayController@gateway",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ]
+  },
+  {
+   "uri": "/search-order-by-browser",
+   "method": "POST",
+   "action": "App\\Http\\Controllers\\Home\\OrderController@searchOrderByBrowser",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ]
+  },
+  {
+   "uri": "/search-order-by-email",
+   "method": "POST",
+   "action": "App\\Http\\Controllers\\Home\\OrderController@searchOrderByEmail",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ]
+  },
+  {
+   "uri": "/search-order-by-sn",
+   "method": "POST",
+   "action": "App\\Http\\Controllers\\Home\\OrderController@searchOrderBySN",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ]
+  }
+ ],
+ "routes": [
+  {
+   "id": "route_001",
+   "method": "GET|HEAD",
+   "uri": "/",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\HomeController@index",
+   "controller_file": "app/Http/Controllers/Home/HomeController.php",
+   "controller_line": 47,
+   "declaring_class": "App\\Http\\Controllers\\Home\\HomeController",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [],
+   "route_definition": "routes/common/web.php:14"
+  },
+  {
+   "id": "route_002",
+   "method": "POST",
+   "uri": "/_ignition/execute-solution",
+   "name": "ignition.executeSolution",
+   "action": "Spatie\\LaravelIgnition\\Http\\Controllers\\ExecuteSolutionController::__invoke",
+   "controller_file": "vendor/spatie/laravel-ignition/src/Http/Controllers/ExecuteSolutionController.php",
+   "controller_line": 15,
+   "declaring_class": "Spatie\\LaravelIgnition\\Http\\Controllers\\ExecuteSolutionController",
+   "middleware": [
+    "Spatie\\LaravelIgnition\\Http\\Middleware\\RunnableSolutionsEnabled"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": [
+    "$_POST:solution",
+    "$_POST:parameters",
+    "$_POST:report"
+   ],
+   "notes": "Spatie Laravel Ignition solution runner. Guarded only by RunnableSolutionsEnabled, which allows execution when app.debug=true AND environment in (local, development) or ignition.enable_runnable_solutions explicitly set (vendor/spatie/laravel-ignition/src/Support/RunnableSolutionsGuard.php:13-35). Known RCE vector when debug is on in a reachable environment."
+  },
+  {
+   "id": "route_003",
+   "method": "GET|HEAD",
+   "uri": "/_ignition/health-check",
+   "name": "ignition.healthCheck",
+   "action": "Spatie\\LaravelIgnition\\Http\\Controllers\\HealthCheckController::__invoke",
+   "controller_file": "vendor/spatie/laravel-ignition/src/Http/Controllers/HealthCheckController.php",
+   "controller_line": 10,
+   "declaring_class": "Spatie\\LaravelIgnition\\Http\\Controllers\\HealthCheckController",
+   "middleware": [
+    "Spatie\\LaravelIgnition\\Http\\Middleware\\RunnableSolutionsEnabled"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [],
+   "input_sources": [],
+   "notes": "Ignition health probe, same middleware."
+  },
+  {
+   "id": "route_004",
+   "method": "POST",
+   "uri": "/_ignition/update-config",
+   "name": "ignition.updateConfig",
+   "action": "Spatie\\LaravelIgnition\\Http\\Controllers\\UpdateConfigController::__invoke",
+   "controller_file": "vendor/spatie/laravel-ignition/src/Http/Controllers/UpdateConfigController.php",
+   "controller_line": 10,
+   "declaring_class": "Spatie\\LaravelIgnition\\Http\\Controllers\\UpdateConfigController",
+   "middleware": [
+    "Spatie\\LaravelIgnition\\Http\\Middleware\\RunnableSolutionsEnabled"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": [
+    "$_POST:configValues"
+   ],
+   "notes": "Ignition config writer, same RunnableSolutionsEnabled guard."
+  },
+  {
+   "id": "route_005",
+   "method": "GET|HEAD",
+   "uri": "/admin",
+   "name": "dcat.admin.",
+   "action": "App\\Admin\\Controllers\\HomeController@index",
+   "controller_file": "app/Admin/Controllers/HomeController.php",
+   "controller_line": 18,
+   "declaring_class": "App\\Admin\\Controllers\\HomeController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_006",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/extensions",
+   "name": "dcat.admin.extensions.index",
+   "action": "Dcat\\Admin\\Http\\Controllers\\ExtensionController@index",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/ExtensionController.php",
+   "controller_line": 20,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\ExtensionController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": [],
+   "notes": "Dcat extension manager (install/uninstall extensions) — highest-privilege admin surface; admin group middleware only."
+  },
+  {
+   "id": "route_007",
+   "method": "POST",
+   "uri": "/admin/auth/extensions",
+   "name": "dcat.admin.extensions.store",
+   "action": "Dcat\\Admin\\Http\\Controllers\\ExtensionController@store",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/HasResourceActions.php",
+   "controller_line": 23,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\ExtensionController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": [],
+   "notes": "Dcat extension manager (install/uninstall extensions) — highest-privilege admin surface; admin group middleware only."
+  },
+  {
+   "id": "route_008",
+   "method": "PUT|PATCH",
+   "uri": "/admin/auth/extensions/{extension}",
+   "name": "dcat.admin.extensions.update",
+   "action": "Dcat\\Admin\\Http\\Controllers\\ExtensionController@update",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/HasResourceActions.php",
+   "controller_line": 13,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\ExtensionController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_009",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/login",
+   "name": "dcat.admin.",
+   "action": "App\\Admin\\Controllers\\AuthController@getLogin",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php",
+   "controller_line": 36,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AuthController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": [
+    "$request (Dcat parent login form: username/password/remember)"
+   ],
+   "notes": "Admin login. Dcat auth except-list includes auth/login (config/admin.php:156-159); project AuthController adds per-account+IP rate limiting (5 attempts / 60s) and default-password detection (app/Admin/Controllers/AuthController.php:17-38)."
+  },
+  {
+   "id": "route_010",
+   "method": "POST",
+   "uri": "/admin/auth/login",
+   "name": "dcat.admin.",
+   "action": "App\\Admin\\Controllers\\AuthController@postLogin",
+   "controller_file": "app/Admin/Controllers/AuthController.php",
+   "controller_line": 15,
+   "declaring_class": "App\\Admin\\Controllers\\AuthController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$request (Dcat parent login form: username/password/remember)"
+   ],
+   "notes": "Admin login. Dcat auth except-list includes auth/login (config/admin.php:156-159); project AuthController adds per-account+IP rate limiting (5 attempts / 60s) and default-password detection (app/Admin/Controllers/AuthController.php:17-38)."
+  },
+  {
+   "id": "route_011",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/logout",
+   "name": "dcat.admin.",
+   "action": "App\\Admin\\Controllers\\AuthController@getLogout",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php",
+   "controller_line": 80,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AuthController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_012",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/menu",
+   "name": "dcat.admin.menu.index",
+   "action": "Dcat\\Admin\\Http\\Controllers\\MenuController@index",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/MenuController.php",
+   "controller_line": 22,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\MenuController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_013",
+   "method": "POST",
+   "uri": "/admin/auth/menu",
+   "name": "dcat.admin.menu.store",
+   "action": "Dcat\\Admin\\Http\\Controllers\\MenuController@store",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 144,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": []
+  },
+  {
+   "id": "route_014",
+   "method": "PUT|PATCH",
+   "uri": "/admin/auth/menu/{menu}",
+   "name": "dcat.admin.menu.update",
+   "action": "Dcat\\Admin\\Http\\Controllers\\MenuController@update",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 134,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_015",
+   "method": "DELETE",
+   "uri": "/admin/auth/menu/{menu}",
+   "name": "dcat.admin.menu.destroy",
+   "action": "Dcat\\Admin\\Http\\Controllers\\MenuController@destroy",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 155,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_016",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/menu/{menu}/edit",
+   "name": "dcat.admin.menu.edit",
+   "action": "Dcat\\Admin\\Http\\Controllers\\MenuController@edit",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 104,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_017",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/permissions",
+   "name": "dcat.admin.permissions.index",
+   "action": "Dcat\\Admin\\Http\\Controllers\\PermissionController@index",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/PermissionController.php",
+   "controller_line": 19,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\PermissionController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_018",
+   "method": "POST",
+   "uri": "/admin/auth/permissions",
+   "name": "dcat.admin.permissions.store",
+   "action": "Dcat\\Admin\\Http\\Controllers\\PermissionController@store",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 144,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": []
+  },
+  {
+   "id": "route_019",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/permissions/create",
+   "name": "dcat.admin.permissions.create",
+   "action": "Dcat\\Admin\\Http\\Controllers\\PermissionController@create",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 119,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_020",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/permissions/{permission}",
+   "name": "dcat.admin.permissions.show",
+   "action": "Dcat\\Admin\\Http\\Controllers\\PermissionController@show",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 88,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_021",
+   "method": "PUT|PATCH",
+   "uri": "/admin/auth/permissions/{permission}",
+   "name": "dcat.admin.permissions.update",
+   "action": "Dcat\\Admin\\Http\\Controllers\\PermissionController@update",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 134,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_022",
+   "method": "DELETE",
+   "uri": "/admin/auth/permissions/{permission}",
+   "name": "dcat.admin.permissions.destroy",
+   "action": "Dcat\\Admin\\Http\\Controllers\\PermissionController@destroy",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 155,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_023",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/permissions/{permission}/edit",
+   "name": "dcat.admin.permissions.edit",
+   "action": "Dcat\\Admin\\Http\\Controllers\\PermissionController@edit",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 104,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_024",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/roles",
+   "name": "dcat.admin.roles.index",
+   "action": "Dcat\\Admin\\Http\\Controllers\\RoleController@index",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 72,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_025",
+   "method": "POST",
+   "uri": "/admin/auth/roles",
+   "name": "dcat.admin.roles.store",
+   "action": "Dcat\\Admin\\Http\\Controllers\\RoleController@store",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 144,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": []
+  },
+  {
+   "id": "route_026",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/roles/create",
+   "name": "dcat.admin.roles.create",
+   "action": "Dcat\\Admin\\Http\\Controllers\\RoleController@create",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 119,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_027",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/roles/{role}",
+   "name": "dcat.admin.roles.show",
+   "action": "Dcat\\Admin\\Http\\Controllers\\RoleController@show",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 88,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_028",
+   "method": "PUT|PATCH",
+   "uri": "/admin/auth/roles/{role}",
+   "name": "dcat.admin.roles.update",
+   "action": "Dcat\\Admin\\Http\\Controllers\\RoleController@update",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 134,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_029",
+   "method": "DELETE",
+   "uri": "/admin/auth/roles/{role}",
+   "name": "dcat.admin.roles.destroy",
+   "action": "Dcat\\Admin\\Http\\Controllers\\RoleController@destroy",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/RoleController.php",
+   "controller_line": 145,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\RoleController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_030",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/roles/{role}/edit",
+   "name": "dcat.admin.roles.edit",
+   "action": "Dcat\\Admin\\Http\\Controllers\\RoleController@edit",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 104,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_031",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/setting",
+   "name": "dcat.admin.",
+   "action": "App\\Admin\\Controllers\\AuthController@getSetting",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php",
+   "controller_line": 100,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AuthController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": [
+    "$request (Dcat setting form, PUT)"
+   ],
+   "notes": "Admin profile/password change; in Dcat permission except-list (config/admin.php:220-225) and force-password allow-list (app/Http/Middleware/ForceAdminPasswordChange.php:22-26)."
+  },
+  {
+   "id": "route_032",
+   "method": "PUT",
+   "uri": "/admin/auth/setting",
+   "name": "dcat.admin.",
+   "action": "App\\Admin\\Controllers\\AuthController@putSetting",
+   "controller_file": "app/Admin/Controllers/AuthController.php",
+   "controller_line": 46,
+   "declaring_class": "App\\Admin\\Controllers\\AuthController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": [
+    "$request (Dcat setting form, PUT)"
+   ],
+   "notes": "Admin profile/password change; in Dcat permission except-list (config/admin.php:220-225) and force-password allow-list (app/Http/Middleware/ForceAdminPasswordChange.php:22-26)."
+  },
+  {
+   "id": "route_033",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/users",
+   "name": "dcat.admin.users.index",
+   "action": "Dcat\\Admin\\Http\\Controllers\\UserController@index",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 72,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_034",
+   "method": "POST",
+   "uri": "/admin/auth/users",
+   "name": "dcat.admin.users.store",
+   "action": "Dcat\\Admin\\Http\\Controllers\\UserController@store",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 144,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": []
+  },
+  {
+   "id": "route_035",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/users/create",
+   "name": "dcat.admin.users.create",
+   "action": "Dcat\\Admin\\Http\\Controllers\\UserController@create",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 119,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_036",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/users/{user}",
+   "name": "dcat.admin.users.show",
+   "action": "Dcat\\Admin\\Http\\Controllers\\UserController@show",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 88,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_037",
+   "method": "PUT|PATCH",
+   "uri": "/admin/auth/users/{user}",
+   "name": "dcat.admin.users.update",
+   "action": "Dcat\\Admin\\Http\\Controllers\\UserController@update",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 134,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_038",
+   "method": "DELETE",
+   "uri": "/admin/auth/users/{user}",
+   "name": "dcat.admin.users.destroy",
+   "action": "Dcat\\Admin\\Http\\Controllers\\UserController@destroy",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/UserController.php",
+   "controller_line": 186,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\UserController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_039",
+   "method": "GET|HEAD",
+   "uri": "/admin/auth/users/{user}/edit",
+   "name": "dcat.admin.users.edit",
+   "action": "Dcat\\Admin\\Http\\Controllers\\UserController@edit",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 104,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_040",
+   "method": "GET|HEAD",
+   "uri": "/admin/carmis",
+   "name": "dcat.admin.carmis.index",
+   "action": "App\\Admin\\Controllers\\CarmisController@index",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 72,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_041",
+   "method": "POST",
+   "uri": "/admin/carmis",
+   "name": "dcat.admin.carmis.store",
+   "action": "App\\Admin\\Controllers\\CarmisController@store",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 144,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": []
+  },
+  {
+   "id": "route_042",
+   "method": "GET|HEAD",
+   "uri": "/admin/carmis/create",
+   "name": "dcat.admin.carmis.create",
+   "action": "App\\Admin\\Controllers\\CarmisController@create",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 119,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_043",
+   "method": "GET|HEAD",
+   "uri": "/admin/carmis/{carmi}",
+   "name": "dcat.admin.carmis.show",
+   "action": "App\\Admin\\Controllers\\CarmisController@show",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 88,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_044",
+   "method": "PUT|PATCH",
+   "uri": "/admin/carmis/{carmi}",
+   "name": "dcat.admin.carmis.update",
+   "action": "App\\Admin\\Controllers\\CarmisController@update",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 134,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_045",
+   "method": "DELETE",
+   "uri": "/admin/carmis/{carmi}",
+   "name": "dcat.admin.carmis.destroy",
+   "action": "App\\Admin\\Controllers\\CarmisController@destroy",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 155,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_046",
+   "method": "GET|HEAD",
+   "uri": "/admin/carmis/{carmi}/edit",
+   "name": "dcat.admin.carmis.edit",
+   "action": "App\\Admin\\Controllers\\CarmisController@edit",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 104,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_047",
+   "method": "GET|HEAD",
+   "uri": "/admin/coupon",
+   "name": "dcat.admin.coupon.index",
+   "action": "App\\Admin\\Controllers\\CouponController@index",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 72,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_048",
+   "method": "POST",
+   "uri": "/admin/coupon",
+   "name": "dcat.admin.coupon.store",
+   "action": "App\\Admin\\Controllers\\CouponController@store",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 144,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": []
+  },
+  {
+   "id": "route_049",
+   "method": "GET|HEAD",
+   "uri": "/admin/coupon/create",
+   "name": "dcat.admin.coupon.create",
+   "action": "App\\Admin\\Controllers\\CouponController@create",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 119,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_050",
+   "method": "GET|HEAD",
+   "uri": "/admin/coupon/{coupon}",
+   "name": "dcat.admin.coupon.show",
+   "action": "App\\Admin\\Controllers\\CouponController@show",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 88,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_051",
+   "method": "PUT|PATCH",
+   "uri": "/admin/coupon/{coupon}",
+   "name": "dcat.admin.coupon.update",
+   "action": "App\\Admin\\Controllers\\CouponController@update",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 134,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_052",
+   "method": "DELETE",
+   "uri": "/admin/coupon/{coupon}",
+   "name": "dcat.admin.coupon.destroy",
+   "action": "App\\Admin\\Controllers\\CouponController@destroy",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 155,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_053",
+   "method": "GET|HEAD",
+   "uri": "/admin/coupon/{coupon}/edit",
+   "name": "dcat.admin.coupon.edit",
+   "action": "App\\Admin\\Controllers\\CouponController@edit",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 104,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_054",
+   "method": "POST",
+   "uri": "/admin/dcat-api/action",
+   "name": "dcat.admin.dcat-api.action",
+   "action": "Dcat\\Admin\\Http\\Controllers\\HandleActionController@handle",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleActionController.php",
+   "controller_line": 16,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\HandleActionController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [],
+   "notes": "Generic admin action dispatcher (HandleActionController::handle) — admin group only."
+  },
+  {
+   "id": "route_055",
+   "method": "POST",
+   "uri": "/admin/dcat-api/editor-md/upload",
+   "name": "dcat.admin.dcat-api.editor-md.upload",
+   "action": "Dcat\\Admin\\Http\\Controllers\\EditorMDController@upload",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/EditorMDController.php",
+   "controller_line": 12,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\EditorMDController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [],
+   "notes": "Admin editor file upload (EditorMDController::upload) — admin group only."
+  },
+  {
+   "id": "route_056",
+   "method": "POST",
+   "uri": "/admin/dcat-api/form",
+   "name": "dcat.admin.dcat-api.form",
+   "action": "Dcat\\Admin\\Http\\Controllers\\HandleFormController@handle",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php",
+   "controller_line": 18,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\HandleFormController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [],
+   "notes": "Generic admin form submit (HandleFormController::handle) — admin group only."
+  },
+  {
+   "id": "route_057",
+   "method": "POST",
+   "uri": "/admin/dcat-api/form/destroy-file",
+   "name": "dcat.admin.dcat-api.form.destroy-file",
+   "action": "Dcat\\Admin\\Http\\Controllers\\HandleFormController@destroyFile",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php",
+   "controller_line": 75,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\HandleFormController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_058",
+   "method": "POST",
+   "uri": "/admin/dcat-api/form/upload",
+   "name": "dcat.admin.dcat-api.form.upload",
+   "action": "Dcat\\Admin\\Http\\Controllers\\HandleFormController@uploadFile",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php",
+   "controller_line": 37,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\HandleFormController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [],
+   "notes": "Admin file upload endpoint (Dcat HandleFormController::uploadFile) — admin group only; upload validation/disk config in config/admin.php upload section."
+  },
+  {
+   "id": "route_059",
+   "method": "GET|HEAD",
+   "uri": "/admin/dcat-api/render",
+   "name": "dcat.admin.dcat-api.render",
+   "action": "Dcat\\Admin\\Http\\Controllers\\RenderableController@handle",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/RenderableController.php",
+   "controller_line": 12,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\RenderableController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_060",
+   "method": "POST",
+   "uri": "/admin/dcat-api/tinymce/upload",
+   "name": "dcat.admin.dcat-api.tinymce.upload",
+   "action": "Dcat\\Admin\\Http\\Controllers\\TinymceController@upload",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/TinymceController.php",
+   "controller_line": 12,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\TinymceController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [],
+   "notes": "Admin editor file upload (TinymceController::upload) — admin group only."
+  },
+  {
+   "id": "route_061",
+   "method": "POST",
+   "uri": "/admin/dcat-api/value",
+   "name": "dcat.admin.dcat-api.value",
+   "action": "Dcat\\Admin\\Http\\Controllers\\ValueController@handle",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/ValueController.php",
+   "controller_line": 14,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\ValueController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [],
+   "notes": "Admin inline-edit value writer (ValueController::handle) — admin group only."
+  },
+  {
+   "id": "route_062",
+   "method": "GET|HEAD",
+   "uri": "/admin/email-test",
+   "name": "dcat.admin.",
+   "action": "App\\Admin\\Controllers\\EmailTestController@emailTest",
+   "controller_file": "app/Admin/Controllers/EmailTestController.php",
+   "controller_line": 31,
+   "declaring_class": "App\\Admin\\Controllers\\EmailTestController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": [],
+   "notes": "Sends test mail using stored SMTP settings (app/Admin/Controllers/EmailTestController.php:31) — admin group only."
+  },
+  {
+   "id": "route_063",
+   "method": "GET|HEAD",
+   "uri": "/admin/emailtpl",
+   "name": "dcat.admin.emailtpl.index",
+   "action": "App\\Admin\\Controllers\\EmailtplController@index",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 72,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_064",
+   "method": "POST",
+   "uri": "/admin/emailtpl",
+   "name": "dcat.admin.emailtpl.store",
+   "action": "App\\Admin\\Controllers\\EmailtplController@store",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 144,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": []
+  },
+  {
+   "id": "route_065",
+   "method": "GET|HEAD",
+   "uri": "/admin/emailtpl/create",
+   "name": "dcat.admin.emailtpl.create",
+   "action": "App\\Admin\\Controllers\\EmailtplController@create",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 119,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_066",
+   "method": "GET|HEAD",
+   "uri": "/admin/emailtpl/{emailtpl}",
+   "name": "dcat.admin.emailtpl.show",
+   "action": "App\\Admin\\Controllers\\EmailtplController@show",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 88,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_067",
+   "method": "PUT|PATCH",
+   "uri": "/admin/emailtpl/{emailtpl}",
+   "name": "dcat.admin.emailtpl.update",
+   "action": "App\\Admin\\Controllers\\EmailtplController@update",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 134,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_068",
+   "method": "DELETE",
+   "uri": "/admin/emailtpl/{emailtpl}",
+   "name": "dcat.admin.emailtpl.destroy",
+   "action": "App\\Admin\\Controllers\\EmailtplController@destroy",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 155,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_069",
+   "method": "GET|HEAD",
+   "uri": "/admin/emailtpl/{emailtpl}/edit",
+   "name": "dcat.admin.emailtpl.edit",
+   "action": "App\\Admin\\Controllers\\EmailtplController@edit",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 104,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_070",
+   "method": "GET|HEAD",
+   "uri": "/admin/goods",
+   "name": "dcat.admin.goods.index",
+   "action": "App\\Admin\\Controllers\\GoodsController@index",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 72,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_071",
+   "method": "POST",
+   "uri": "/admin/goods",
+   "name": "dcat.admin.goods.store",
+   "action": "App\\Admin\\Controllers\\GoodsController@store",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 144,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": []
+  },
+  {
+   "id": "route_072",
+   "method": "GET|HEAD",
+   "uri": "/admin/goods-group",
+   "name": "dcat.admin.goods-group.index",
+   "action": "App\\Admin\\Controllers\\GoodsGroupController@index",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 72,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_073",
+   "method": "POST",
+   "uri": "/admin/goods-group",
+   "name": "dcat.admin.goods-group.store",
+   "action": "App\\Admin\\Controllers\\GoodsGroupController@store",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 144,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": []
+  },
+  {
+   "id": "route_074",
+   "method": "GET|HEAD",
+   "uri": "/admin/goods-group/create",
+   "name": "dcat.admin.goods-group.create",
+   "action": "App\\Admin\\Controllers\\GoodsGroupController@create",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 119,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_075",
+   "method": "GET|HEAD",
+   "uri": "/admin/goods-group/{goods_group}",
+   "name": "dcat.admin.goods-group.show",
+   "action": "App\\Admin\\Controllers\\GoodsGroupController@show",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 88,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_076",
+   "method": "PUT|PATCH",
+   "uri": "/admin/goods-group/{goods_group}",
+   "name": "dcat.admin.goods-group.update",
+   "action": "App\\Admin\\Controllers\\GoodsGroupController@update",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 134,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_077",
+   "method": "DELETE",
+   "uri": "/admin/goods-group/{goods_group}",
+   "name": "dcat.admin.goods-group.destroy",
+   "action": "App\\Admin\\Controllers\\GoodsGroupController@destroy",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 155,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_078",
+   "method": "GET|HEAD",
+   "uri": "/admin/goods-group/{goods_group}/edit",
+   "name": "dcat.admin.goods-group.edit",
+   "action": "App\\Admin\\Controllers\\GoodsGroupController@edit",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 104,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_079",
+   "method": "GET|HEAD",
+   "uri": "/admin/goods/create",
+   "name": "dcat.admin.goods.create",
+   "action": "App\\Admin\\Controllers\\GoodsController@create",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 119,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_080",
+   "method": "GET|HEAD",
+   "uri": "/admin/goods/{good}",
+   "name": "dcat.admin.goods.show",
+   "action": "App\\Admin\\Controllers\\GoodsController@show",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 88,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_081",
+   "method": "PUT|PATCH",
+   "uri": "/admin/goods/{good}",
+   "name": "dcat.admin.goods.update",
+   "action": "App\\Admin\\Controllers\\GoodsController@update",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 134,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_082",
+   "method": "DELETE",
+   "uri": "/admin/goods/{good}",
+   "name": "dcat.admin.goods.destroy",
+   "action": "App\\Admin\\Controllers\\GoodsController@destroy",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 155,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_083",
+   "method": "GET|HEAD",
+   "uri": "/admin/goods/{good}/edit",
+   "name": "dcat.admin.goods.edit",
+   "action": "App\\Admin\\Controllers\\GoodsController@edit",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 104,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_084",
+   "method": "GET|HEAD",
+   "uri": "/admin/import-carmis",
+   "name": "dcat.admin.",
+   "action": "App\\Admin\\Controllers\\CarmisController@importCarmis",
+   "controller_file": "app/Admin/Controllers/CarmisController.php",
+   "controller_line": 118,
+   "declaring_class": "App\\Admin\\Controllers\\CarmisController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": [],
+   "notes": "Card-secret bulk import (app/Admin/Controllers/CarmisController.php:118) — admin group only."
+  },
+  {
+   "id": "route_085",
+   "method": "GET|HEAD",
+   "uri": "/admin/order",
+   "name": "dcat.admin.order.index",
+   "action": "App\\Admin\\Controllers\\OrderController@index",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 72,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_086",
+   "method": "POST",
+   "uri": "/admin/order",
+   "name": "dcat.admin.order.store",
+   "action": "App\\Admin\\Controllers\\OrderController@store",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 144,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": []
+  },
+  {
+   "id": "route_087",
+   "method": "GET|HEAD",
+   "uri": "/admin/order/create",
+   "name": "dcat.admin.order.create",
+   "action": "App\\Admin\\Controllers\\OrderController@create",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 119,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_088",
+   "method": "GET|HEAD",
+   "uri": "/admin/order/{order}",
+   "name": "dcat.admin.order.show",
+   "action": "App\\Admin\\Controllers\\OrderController@show",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 88,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_089",
+   "method": "PUT|PATCH",
+   "uri": "/admin/order/{order}",
+   "name": "dcat.admin.order.update",
+   "action": "App\\Admin\\Controllers\\OrderController@update",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 134,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_090",
+   "method": "DELETE",
+   "uri": "/admin/order/{order}",
+   "name": "dcat.admin.order.destroy",
+   "action": "App\\Admin\\Controllers\\OrderController@destroy",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 155,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_091",
+   "method": "GET|HEAD",
+   "uri": "/admin/order/{order}/edit",
+   "name": "dcat.admin.order.edit",
+   "action": "App\\Admin\\Controllers\\OrderController@edit",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 104,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_092",
+   "method": "GET|HEAD",
+   "uri": "/admin/pay",
+   "name": "dcat.admin.pay.index",
+   "action": "App\\Admin\\Controllers\\PayController@index",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 72,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_093",
+   "method": "POST",
+   "uri": "/admin/pay",
+   "name": "dcat.admin.pay.store",
+   "action": "App\\Admin\\Controllers\\PayController@store",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 144,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [],
+   "input_sources": []
+  },
+  {
+   "id": "route_094",
+   "method": "GET|HEAD",
+   "uri": "/admin/pay/create",
+   "name": "dcat.admin.pay.create",
+   "action": "App\\Admin\\Controllers\\PayController@create",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 119,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_095",
+   "method": "GET|HEAD",
+   "uri": "/admin/pay/{pay}",
+   "name": "dcat.admin.pay.show",
+   "action": "App\\Admin\\Controllers\\PayController@show",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 88,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_096",
+   "method": "PUT|PATCH",
+   "uri": "/admin/pay/{pay}",
+   "name": "dcat.admin.pay.update",
+   "action": "App\\Admin\\Controllers\\PayController@update",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 134,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_097",
+   "method": "DELETE",
+   "uri": "/admin/pay/{pay}",
+   "name": "dcat.admin.pay.destroy",
+   "action": "App\\Admin\\Controllers\\PayController@destroy",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 155,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "id:mixed"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_098",
+   "method": "GET|HEAD",
+   "uri": "/admin/pay/{pay}/edit",
+   "name": "dcat.admin.pay.edit",
+   "action": "App\\Admin\\Controllers\\PayController@edit",
+   "controller_file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+   "controller_line": 104,
+   "declaring_class": "Dcat\\Admin\\Http\\Controllers\\AdminController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:mixed",
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": []
+  },
+  {
+   "id": "route_099",
+   "method": "GET|HEAD",
+   "uri": "/admin/system-setting",
+   "name": "dcat.admin.",
+   "action": "App\\Admin\\Controllers\\SystemSettingController@systemSetting",
+   "controller_file": "app/Admin/Controllers/SystemSettingController.php",
+   "controller_line": 31,
+   "declaring_class": "App\\Admin\\Controllers\\SystemSettingController",
+   "middleware": [
+    "Dcat\\Admin\\Http\\Middleware\\Application:admin",
+    "web",
+    "admin",
+    "admin.force-password"
+   ],
+   "auth_level": "admin",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "content:Dcat\\Admin\\Layout\\Content"
+   ],
+   "input_sources": [],
+   "notes": "System settings page (app/Admin/Controllers/SystemSettingController.php:31) — admin group only."
+  },
+  {
+   "id": "route_100",
+   "method": "GET|HEAD",
+   "uri": "/api/user",
+   "name": null,
+   "action": "Closure::__invoke",
+   "controller_file": "routes/api.php",
+   "controller_line": false,
+   "declaring_class": "Closure",
+   "middleware": [
+    "api",
+    "auth:api"
+   ],
+   "auth_level": "authenticated",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [],
+   "input_sources": [
+    "Request $request (returned user from token guard)"
+   ],
+   "route_definition": "routes/api.php:16",
+   "notes": "auth:api (token guard, config/auth.php:44-48 with hash=false); closure in routes/api.php:16-18."
+  },
+  {
+   "id": "route_101",
+   "method": "GET|HEAD",
+   "uri": "/bill/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\OrderController@bill",
+   "controller_file": "app/Http/Controllers/Home/OrderController.php",
+   "controller_line": 121,
+   "declaring_class": "App\\Http\\Controllers\\Home\\OrderController",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "orderSN:string"
+   ],
+   "input_sources": [
+    "route_param:orderSN"
+   ],
+   "route_definition": "routes/common/web.php:22",
+   "notes": "Checkout page by order_sn, no ownership binding (OrderController.php:121-132)."
+  },
+  {
+   "id": "route_102",
+   "method": "GET|HEAD",
+   "uri": "/buy/{id}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\HomeController@buy",
+   "controller_file": "app/Http/Controllers/Home/HomeController.php",
+   "controller_line": 63,
+   "declaring_class": "App\\Http\\Controllers\\Home\\HomeController",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "id:int"
+   ],
+   "input_sources": [
+    "route_param:id"
+   ],
+   "route_definition": "routes/common/web.php:18"
+  },
+  {
+   "id": "route_103",
+   "method": "GET|HEAD",
+   "uri": "/captcha/api/{config?}",
+   "name": null,
+   "action": "Mews\\Captcha\\CaptchaController@getCaptchaApi",
+   "controller_file": "vendor/mews/captcha/src/CaptchaController.php",
+   "controller_line": 39,
+   "declaring_class": "Mews\\Captcha\\CaptchaController",
+   "middleware": [
+    "web"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "captcha:Mews\\Captcha\\Captcha",
+    "config:string"
+   ],
+   "input_sources": [
+    "route_param:config"
+   ]
+  },
+  {
+   "id": "route_104",
+   "method": "GET|HEAD",
+   "uri": "/captcha/{config?}",
+   "name": null,
+   "action": "Mews\\Captcha\\CaptchaController@getCaptcha",
+   "controller_file": "vendor/mews/captcha/src/CaptchaController.php",
+   "controller_line": 22,
+   "declaring_class": "Mews\\Captcha\\CaptchaController",
+   "middleware": [
+    "web"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "captcha:Mews\\Captcha\\Captcha",
+    "config:string"
+   ],
+   "input_sources": [
+    "route_param:config"
+   ]
+  },
+  {
+   "id": "route_105",
+   "method": "GET|HEAD",
+   "uri": "/check-geetest",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\HomeController@geetest",
+   "controller_file": "app/Http/Controllers/Home/HomeController.php",
+   "controller_line": 95,
+   "declaring_class": "App\\Http\\Controllers\\Home\\HomeController",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [],
+   "route_definition": "routes/common/web.php:16"
+  },
+  {
+   "id": "route_106",
+   "method": "GET|HEAD",
+   "uri": "/check-order-status/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\OrderController@checkOrderStatus",
+   "controller_file": "app/Http/Controllers/Home/OrderController.php",
+   "controller_line": 144,
+   "declaring_class": "App\\Http\\Controllers\\Home\\OrderController",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "orderSN:string"
+   ],
+   "input_sources": [
+    "route_param:orderSN"
+   ],
+   "route_definition": "routes/common/web.php:28",
+   "notes": "Order status oracle by order_sn (OrderController.php:144-159)."
+  },
+  {
+   "id": "route_107",
+   "method": "POST",
+   "uri": "/create-order",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\OrderController@createOrder",
+   "controller_file": "app/Http/Controllers/Home/OrderController.php",
+   "controller_line": 57,
+   "declaring_class": "App\\Http\\Controllers\\Home\\OrderController",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_POST:by_amount",
+    "$_POST:payway",
+    "$_POST:email",
+    "$_POST:search_pwd",
+    "plus OrderService validators (goods id/quantity/coupon/charge inputs)"
+   ],
+   "route_definition": "routes/common/web.php:20",
+   "notes": "Unauthenticated order creation; CSRF-protected (POST, web group). Decrements stock / issues carmis — business-logic surface."
+  },
+  {
+   "id": "route_108",
+   "method": "GET|HEAD",
+   "uri": "/detail-order-sn/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\OrderController@detailOrderSN",
+   "controller_file": "app/Http/Controllers/Home/OrderController.php",
+   "controller_line": 171,
+   "declaring_class": "App\\Http\\Controllers\\Home\\OrderController",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "orderSN:string"
+   ],
+   "input_sources": [
+    "route_param:orderSN"
+   ],
+   "route_definition": "routes/common/web.php:24",
+   "notes": "Order detail by order_sn, no ownership/session binding (OrderController.php:171-179)."
+  },
+  {
+   "id": "route_109",
+   "method": "POST",
+   "uri": "/do-install",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\HomeController@doInstall",
+   "controller_file": "app/Http/Controllers/Home/HomeController.php",
+   "controller_line": 132,
+   "declaring_class": "App\\Http\\Controllers\\Home\\HomeController",
+   "middleware": [
+    "web",
+    "install.check"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_POST:db_host",
+    "$_POST:db_port",
+    "$_POST:db_database",
+    "$_POST:db_username",
+    "$_POST:db_password",
+    "$_POST:redis_host",
+    "$_POST:redis_port",
+    "$_POST:redis_password",
+    "$_POST:title",
+    "$_POST:app_url",
+    "$_POST:admin_path",
+    "$_POST:admin_username",
+    "$_POST:admin_password"
+   ],
+   "route_definition": "routes/common/web.php:41",
+   "notes": "Unauthenticated installer, only gated by install.check (redirects away once install.lock exists) — app/Http/Middleware/InstallCheck.php:20-22. Writes .env, imports install.sql, sets admin password, creates install.lock (app/Http/Controllers/Home/HomeController.php:202-216). POST is CSRF-protected by web group."
+  },
+  {
+   "id": "route_110",
+   "method": "GET|HEAD",
+   "uri": "/geetest",
+   "name": null,
+   "action": "App\\Service\\Geetest\\GeetestController@getGeetest",
+   "controller_file": "app/Service/Geetest/GeetestCaptcha.php",
+   "controller_line": 12,
+   "declaring_class": "App\\Service\\Geetest\\GeetestController",
+   "middleware": [
+    "web"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [],
+   "input_sources": []
+  },
+  {
+   "id": "route_111",
+   "method": "GET|HEAD",
+   "uri": "/install",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\HomeController@install",
+   "controller_file": "app/Http/Controllers/Home/HomeController.php",
+   "controller_line": 118,
+   "declaring_class": "App\\Http\\Controllers\\Home\\HomeController",
+   "middleware": [
+    "web",
+    "install.check"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [],
+   "route_definition": "routes/common/web.php:39",
+   "notes": "Installer page, gated only by install.check (app/Http/Middleware/InstallCheck.php:20-22)."
+  },
+  {
+   "id": "route_112",
+   "method": "GET|HEAD",
+   "uri": "/order-search",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\OrderController@orderSearch",
+   "controller_file": "app/Http/Controllers/Home/OrderController.php",
+   "controller_line": 254,
+   "declaring_class": "App\\Http\\Controllers\\Home\\OrderController",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [],
+   "route_definition": "routes/common/web.php:26"
+  },
+  {
+   "id": "route_113",
+   "method": "GET|HEAD",
+   "uri": "/pay-gateway/{handle}/{payway}/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\PayController@redirectGatewayLegacy",
+   "controller_file": "app/Http/Controllers/PayController.php",
+   "controller_line": 208,
+   "declaring_class": "App\\Http\\Controllers\\PayController",
+   "middleware": [
+    "web"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "handle:string",
+    "payway:string",
+    "orderSN:string"
+   ],
+   "input_sources": [
+    "route_param:handle",
+    "route_param:payway",
+    "route_param:orderSN"
+   ],
+   "route_definition": "routes/common/pay.php:12",
+   "notes": "Legacy 3-segment variant, simply delegates to redirectGateway (app/Http/Controllers/PayController.php:208-211)."
+  },
+  {
+   "id": "route_114",
+   "method": "GET|HEAD",
+   "uri": "/pay-gateway/{payway}/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\PayController@redirectGateway",
+   "controller_file": "app/Http/Controllers/PayController.php",
+   "controller_line": 180,
+   "declaring_class": "App\\Http\\Controllers\\PayController",
+   "middleware": [
+    "web"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "payway:string",
+    "orderSN:string"
+   ],
+   "input_sources": [
+    "route_param:payway",
+    "route_param:orderSN"
+   ],
+   "route_definition": "routes/common/pay.php:11",
+   "notes": "Public gateway dispatcher; if order actual_price == 0 it completes the order immediately (app/Http/Controllers/PayController.php:188-197)."
+  },
+  {
+   "id": "route_115",
+   "method": "POST",
+   "uri": "/pay/coinbase/notify_url",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\CoinbaseController@notifyUrl",
+   "controller_file": "app/Http/Controllers/Pay/CoinbaseController.php",
+   "controller_line": 81,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\CoinbaseController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": true,
+   "csrf_protected": true,
+   "csrf_note": "explicitly listed in VerifyCsrfToken::$except (app/Http/Middleware/VerifyCsrfToken.php:21-26)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "php://input (raw JSON body)",
+    "header:X-CC-Webhook-Signature"
+   ],
+   "route_definition": "routes/common/pay.php:41",
+   "notes": "POST notify. HMAC-SHA256 over raw php://input compared with X-CC-Webhook-Signature (app/Http/Controllers/Pay/CoinbaseController.php:83,108-110)."
+  },
+  {
+   "id": "route_116",
+   "method": "GET|HEAD",
+   "uri": "/pay/coinbase/{payway}/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\CoinbaseController@gateway",
+   "controller_file": "app/Http/Controllers/Pay/CoinbaseController.php",
+   "controller_line": 11,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\CoinbaseController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "payway:string",
+    "orderSN:string"
+   ],
+   "input_sources": [],
+   "route_definition": "routes/common/pay.php:40"
+  },
+  {
+   "id": "route_117",
+   "method": "POST",
+   "uri": "/pay/epusdt/notify_url",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\EpusdtController@notifyUrl",
+   "controller_file": "app/Http/Controllers/Pay/EpusdtController.php",
+   "controller_line": 71,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\EpusdtController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": true,
+   "csrf_protected": true,
+   "csrf_note": "explicitly listed in VerifyCsrfToken::$except (app/Http/Middleware/VerifyCsrfToken.php:21-26)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_POST:order_id",
+    "$_POST:amount",
+    "$_POST:trade_id",
+    "$_POST:signature"
+   ],
+   "route_definition": "routes/common/pay.php:44",
+   "notes": "POST notify. epusdtSign + secureCompare (app/Http/Controllers/Pay/EpusdtController.php:88-89)."
+  },
+  {
+   "id": "route_118",
+   "method": "GET|HEAD",
+   "uri": "/pay/epusdt/return_url",
+   "name": "epusdt-return",
+   "action": "App\\Http\\Controllers\\Pay\\EpusdtController@returnUrl",
+   "controller_file": "app/Http/Controllers/Pay/EpusdtController.php",
+   "controller_line": 99,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\EpusdtController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_GET:order_id"
+   ],
+   "route_definition": "routes/common/pay.php:45"
+  },
+  {
+   "id": "route_119",
+   "method": "GET|HEAD",
+   "uri": "/pay/epusdt/{payway}/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\EpusdtController@gateway",
+   "controller_file": "app/Http/Controllers/Pay/EpusdtController.php",
+   "controller_line": 21,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\EpusdtController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "payway:string",
+    "orderSN:string"
+   ],
+   "input_sources": [],
+   "route_definition": "routes/common/pay.php:43"
+  },
+  {
+   "id": "route_120",
+   "method": "POST",
+   "uri": "/pay/mapay/notify_url",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\MapayController@notifyUrl",
+   "controller_file": "app/Http/Controllers/Pay/MapayController.php",
+   "controller_line": 54,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\MapayController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": true,
+   "csrf_protected": true,
+   "csrf_note": "explicitly listed in VerifyCsrfToken::$except (app/Http/Middleware/VerifyCsrfToken.php:21-26)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_POST:pay_id",
+    "$_POST:pay_no",
+    "$_POST:money",
+    "$_POST:param",
+    "$_POST:sign"
+   ],
+   "route_definition": "routes/common/pay.php:18",
+   "notes": "POST notify. signquery_string + md5(...merchant_pem) compared with secureCompare (app/Http/Controllers/Pay/MapayController.php:74-76)."
+  },
+  {
+   "id": "route_121",
+   "method": "GET|HEAD",
+   "uri": "/pay/mapay/{payway}/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\MapayController@gateway",
+   "controller_file": "app/Http/Controllers/Pay/MapayController.php",
+   "controller_line": 12,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\MapayController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "payway:string",
+    "orderSN:string"
+   ],
+   "input_sources": [],
+   "route_definition": "routes/common/pay.php:17"
+  },
+  {
+   "id": "route_122",
+   "method": "POST",
+   "uri": "/pay/payjs/notify_url",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\PayjsController@notifyUrl",
+   "controller_file": "app/Http/Controllers/Pay/PayjsController.php",
+   "controller_line": 49,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\PayjsController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": true,
+   "csrf_protected": true,
+   "csrf_note": "explicitly listed in VerifyCsrfToken::$except (app/Http/Middleware/VerifyCsrfToken.php:21-26)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_POST:out_trade_no",
+    "$_POST:total_fee",
+    "$_POST:payjs_order_id",
+    "$_POST:sign (verified inside xhat/payjs-laravel Payjs::notify())"
+   ],
+   "route_definition": "routes/common/pay.php:25",
+   "notes": "POST notify. Signature delegated to Xhat\\Payjs Payjs::notify() (app/Http/Controllers/Pay/PayjsController.php:64); no local secureCompare in this controller."
+  },
+  {
+   "id": "route_123",
+   "method": "GET|HEAD",
+   "uri": "/pay/payjs/{payway}/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\PayjsController@gateway",
+   "controller_file": "app/Http/Controllers/Pay/PayjsController.php",
+   "controller_line": 13,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\PayjsController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "payway:string",
+    "orderSN:string"
+   ],
+   "input_sources": [],
+   "route_definition": "routes/common/pay.php:24"
+  },
+  {
+   "id": "route_124",
+   "method": "POST",
+   "uri": "/pay/paysapi/notify_url",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\PaysapiController@notifyUrl",
+   "controller_file": "app/Http/Controllers/Pay/PaysapiController.php",
+   "controller_line": 81,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\PaysapiController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": true,
+   "csrf_protected": true,
+   "csrf_note": "explicitly listed in VerifyCsrfToken::$except (app/Http/Middleware/VerifyCsrfToken.php:21-26)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_POST:orderid",
+    "$_POST:orderuid",
+    "$_POST:paysapi_id",
+    "$_POST:price",
+    "$_POST:realprice",
+    "$_POST:key"
+   ],
+   "route_definition": "routes/common/pay.php:21",
+   "notes": "POST notify. md5(orderid.orderuid.paysapi_id.price.realprice.merchant_pem) compared with secureCompare (app/Http/Controllers/Pay/PaysapiController.php:101-102)."
+  },
+  {
+   "id": "route_125",
+   "method": "GET|HEAD",
+   "uri": "/pay/paysapi/return_url",
+   "name": "paysapi-return",
+   "action": "App\\Http\\Controllers\\Pay\\PaysapiController@returnUrl",
+   "controller_file": "app/Http/Controllers/Pay/PaysapiController.php",
+   "controller_line": 112,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\PaysapiController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_GET:order_id"
+   ],
+   "route_definition": "routes/common/pay.php:22"
+  },
+  {
+   "id": "route_126",
+   "method": "GET|HEAD",
+   "uri": "/pay/paysapi/{payway}/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\PaysapiController@gateway",
+   "controller_file": "app/Http/Controllers/Pay/PaysapiController.php",
+   "controller_line": 14,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\PaysapiController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "payway:string",
+    "orderSN:string"
+   ],
+   "input_sources": [],
+   "route_definition": "routes/common/pay.php:20"
+  },
+  {
+   "id": "route_127",
+   "method": "GET|HEAD",
+   "uri": "/pay/stripe/charge",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\StripeController@charge",
+   "controller_file": "app/Http/Controllers/Pay/StripeController.php",
+   "controller_line": 524,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\StripeController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_GET:orderid",
+    "$_GET:stripeToken",
+    "$_GET:context"
+   ],
+   "route_definition": "routes/common/pay.php:38",
+   "notes": "State-changing via GET: creates Stripe charge (app/Http/Controllers/Pay/StripeController.php:524-558). Same optional-context-token pattern (StripeController.php:536)."
+  },
+  {
+   "id": "route_128",
+   "method": "GET|HEAD",
+   "uri": "/pay/stripe/check",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\StripeController@check",
+   "controller_file": "app/Http/Controllers/Pay/StripeController.php",
+   "controller_line": 473,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\StripeController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_GET:orderid",
+    "$_GET:source",
+    "$_GET:stripe_usd_amount",
+    "$_GET:context"
+   ],
+   "route_definition": "routes/common/pay.php:37",
+   "notes": "State-changing via GET: creates a Stripe Charge and completes order (app/Http/Controllers/Pay/StripeController.php:473-522). CSRF N/A for GET; order context HMAC token validated ONLY when \"context\" is supplied (StripeController.php:490-491, optional via a filled(context) check)."
+  },
+  {
+   "id": "route_129",
+   "method": "GET|HEAD",
+   "uri": "/pay/stripe/return_url",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\StripeController@returnUrl",
+   "controller_file": "app/Http/Controllers/Pay/StripeController.php",
+   "controller_line": 434,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\StripeController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_GET:orderid",
+    "$_GET:source",
+    "$_GET:context"
+   ],
+   "route_definition": "routes/common/pay.php:36",
+   "notes": "State-changing via GET: may create Stripe charge and complete order (app/Http/Controllers/Pay/StripeController.php:434-471)."
+  },
+  {
+   "id": "route_130",
+   "method": "GET|HEAD",
+   "uri": "/pay/stripe/{payway}/{oid}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\StripeController@gateway",
+   "controller_file": "app/Http/Controllers/Pay/StripeController.php",
+   "controller_line": 15,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\StripeController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "payway:string",
+    "orderSN:string"
+   ],
+   "input_sources": [
+    "route_param:payway",
+    "route_param:oid"
+   ],
+   "route_definition": "routes/common/pay.php:35"
+  },
+  {
+   "id": "route_131",
+   "method": "POST",
+   "uri": "/pay/tokenpay/notify_url",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\TokenPayController@notifyUrl",
+   "controller_file": "app/Http/Controllers/Pay/TokenPayController.php",
+   "controller_line": 71,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\TokenPayController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": true,
+   "csrf_protected": true,
+   "csrf_note": "explicitly listed in VerifyCsrfToken::$except (app/Http/Middleware/VerifyCsrfToken.php:21-26)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_POST:OutOrderId",
+    "$_POST:ActualAmount",
+    "$_POST:Id",
+    "$_POST:Signature"
+   ],
+   "route_definition": "routes/common/pay.php:48",
+   "notes": "POST notify. VerifySign + secureCompare (app/Http/Controllers/Pay/TokenPayController.php:89-90)."
+  },
+  {
+   "id": "route_132",
+   "method": "GET|HEAD",
+   "uri": "/pay/tokenpay/return_url",
+   "name": "tokenpay-return",
+   "action": "App\\Http\\Controllers\\Pay\\TokenPayController@returnUrl",
+   "controller_file": "app/Http/Controllers/Pay/TokenPayController.php",
+   "controller_line": 100,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\TokenPayController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_GET:order_id"
+   ],
+   "route_definition": "routes/common/pay.php:49"
+  },
+  {
+   "id": "route_133",
+   "method": "GET|HEAD",
+   "uri": "/pay/tokenpay/{payway}/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\TokenPayController@gateway",
+   "controller_file": "app/Http/Controllers/Pay/TokenPayController.php",
+   "controller_line": 21,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\TokenPayController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "payway:string",
+    "orderSN:string"
+   ],
+   "input_sources": [],
+   "route_definition": "routes/common/pay.php:47"
+  },
+  {
+   "id": "route_134",
+   "method": "GET|HEAD",
+   "uri": "/pay/vpay/notify_url",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\VpayController@notifyUrl",
+   "controller_file": "app/Http/Controllers/Pay/VpayController.php",
+   "controller_line": 52,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\VpayController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_GET:payId",
+    "$_GET:param",
+    "$_GET:type",
+    "$_GET:price",
+    "$_GET:reallyPrice",
+    "$_GET:sign"
+   ],
+   "route_definition": "routes/common/pay.php:32",
+   "notes": "State-changing via GET. Signature md5(payId+param+type+price+reallyPrice+secret) verified via secureCompare (app/Http/Controllers/Pay/VpayController.php:79-80)."
+  },
+  {
+   "id": "route_135",
+   "method": "GET|HEAD",
+   "uri": "/pay/vpay/return_url",
+   "name": "vpay-return",
+   "action": "App\\Http\\Controllers\\Pay\\VpayController@returnUrl",
+   "controller_file": "app/Http/Controllers/Pay/VpayController.php",
+   "controller_line": 89,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\VpayController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_GET:order_id"
+   ],
+   "route_definition": "routes/common/pay.php:33"
+  },
+  {
+   "id": "route_136",
+   "method": "GET|HEAD",
+   "uri": "/pay/vpay/{payway}/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\VpayController@gateway",
+   "controller_file": "app/Http/Controllers/Pay/VpayController.php",
+   "controller_line": 19,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\VpayController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "payway:string",
+    "orderSN:string"
+   ],
+   "input_sources": [],
+   "route_definition": "routes/common/pay.php:31"
+  },
+  {
+   "id": "route_137",
+   "method": "GET|HEAD",
+   "uri": "/pay/yipay/notify_url",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\YipayController@notifyUrl",
+   "controller_file": "app/Http/Controllers/Pay/YipayController.php",
+   "controller_line": 59,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\YipayController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_GET:out_trade_no",
+    "$_GET:trade_no",
+    "$_GET:money",
+    "$_GET:sign",
+    "$_GET:trade_status",
+    "$_GET:status"
+   ],
+   "route_definition": "routes/common/pay.php:28",
+   "notes": "State-changing via GET (order completion). CSRF N/A for GET. Auth precondition = MD5 sign over sorted params + payGateway->merchant_pem, compared with hash_equals (app/Http/Controllers/Pay/YipayController.php:94-95); gateway route pinned by isExpectedGatewayRoute (YipayController.php:73); amount re-validated in OrderProcessService::completedOrder."
+  },
+  {
+   "id": "route_138",
+   "method": "GET|HEAD",
+   "uri": "/pay/yipay/return_url",
+   "name": "yipay-return",
+   "action": "App\\Http\\Controllers\\Pay\\YipayController@returnUrl",
+   "controller_file": "app/Http/Controllers/Pay/YipayController.php",
+   "controller_line": 113,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\YipayController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_GET:order_id"
+   ],
+   "route_definition": "routes/common/pay.php:29"
+  },
+  {
+   "id": "route_139",
+   "method": "GET|HEAD",
+   "uri": "/pay/yipay/{payway}/{orderSN}",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Pay\\YipayController@gateway",
+   "controller_file": "app/Http/Controllers/Pay/YipayController.php",
+   "controller_line": 11,
+   "declaring_class": "App\\Http\\Controllers\\Pay\\YipayController",
+   "middleware": [
+    "web",
+    "dujiaoka.pay_gate_way"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": false,
+   "csrf_note": "safe method (Laravel CSRF applies only to POST/PUT/PATCH/DELETE)",
+   "route_params": [
+    "payway:string",
+    "orderSN:string"
+   ],
+   "input_sources": [],
+   "route_definition": "routes/common/pay.php:27"
+  },
+  {
+   "id": "route_140",
+   "method": "POST",
+   "uri": "/search-order-by-browser",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\OrderController@searchOrderByBrowser",
+   "controller_file": "app/Http/Controllers/Home/OrderController.php",
+   "controller_line": 233,
+   "declaring_class": "App\\Http\\Controllers\\Home\\OrderController",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "cookie:dujiaoka_orders (EncryptCookies-protected)"
+   ],
+   "route_definition": "routes/common/web.php:34",
+   "notes": "Order lookup from encrypted cookie dujiaoka_orders (OrderController.php:233-245); cookie is encrypted by EncryptCookies (app/Http/Middleware/EncryptCookies.php:14-16 empty except list)."
+  },
+  {
+   "id": "route_141",
+   "method": "POST",
+   "uri": "/search-order-by-email",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\OrderController@searchOrderByEmail",
+   "controller_file": "app/Http/Controllers/Home/OrderController.php",
+   "controller_line": 206,
+   "declaring_class": "App\\Http\\Controllers\\Home\\OrderController",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_POST:email",
+    "$_POST:search_pwd"
+   ],
+   "route_definition": "routes/common/web.php:32",
+   "notes": "Unauthenticated order lookup by email + search_pwd; search_pwd presence only enforced when is_open_search_pwd=open (OrderController.php:206-223)."
+  },
+  {
+   "id": "route_142",
+   "method": "POST",
+   "uri": "/search-order-by-sn",
+   "name": null,
+   "action": "App\\Http\\Controllers\\Home\\OrderController@searchOrderBySN",
+   "controller_file": "app/Http/Controllers/Home/OrderController.php",
+   "controller_line": 191,
+   "declaring_class": "App\\Http\\Controllers\\Home\\OrderController",
+   "middleware": [
+    "web",
+    "dujiaoka.boot"
+   ],
+   "auth_level": "anonymous",
+   "csrf_exempt": false,
+   "csrf_protected": true,
+   "csrf_note": "enforced by web group VerifyCsrfToken (app/Http/Kernel.php:34-43)",
+   "route_params": [
+    "request:Illuminate\\Http\\Request"
+   ],
+   "input_sources": [
+    "$_POST:order_sn"
+   ],
+   "route_definition": "routes/common/web.php:30",
+   "notes": "Unauthenticated order lookup, delegates to detailOrderSN with POST-supplied order_sn (app/Http/Controllers/Home/OrderController.php:191). No ownership check; order_sn is the only secret."
+  }
+ ]
+}

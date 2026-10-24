@@ -1,0 +1,70 @@
+{
+  "artifact": "injection-findings",
+  "audit_kind": "phase4-domain-audit-injection",
+  "mode": "static",
+  "target": ".",
+  "domain": "injection",
+  "branch": "upgrade/php83",
+  "generated_by": "php-audit-auditor (injection domain, static source-to-sink)",
+  "method": "Read the assigned ITEMs, the upstream shared/guidance and team4 auditor skills, then traced source->sink in the current working tree. No HTTP request, payload or container action was performed (MODE=static). Secrets/.env values were not printed.",
+  "guidance_consumed": [
+    "tools/php-audit-skills/shared/anti_hallucination.md",
+    "tools/php-audit-skills/shared/evidence_contract.md",
+    "tools/php-audit-skills/shared/sink_definitions.md (#6 SSRF, #3 file inclusion)",
+    "tools/php-audit-skills/shared/php_specific_patterns.md",
+    "tools/php-audit-skills/shared/second_order.md (#6 second-order SSRF)",
+    "tools/php-audit-skills/teams/team4/ssrf_auditor.md",
+    "tools/php-audit-skills/skills/auditors/ssrf_auditor_analyze.md"
+  ],
+  "items_audited": [
+    "PQ-07"
+  ],
+  "environment_notes": [
+    "Host has no php binary, so no runtime probe was attempted; PHP-wrapper behaviour statements are limited to what the source shows.",
+    "conf/php.ini contains no allow_url_fopen / open_basedir / disable_functions directive (grep: no match), so the http stream wrapper is available in the shipped image.",
+    "Queue is real: .env.example:36 QUEUE_CONNECTION=redis, conf/supervisord.conf:32 runs 'php /app/artisan queue:work --tries=3' (config/queue.php:16 default is env('QUEUE_CONNECTION','sync'))."
+  ],
+  "findings": [
+    {
+      "id": "PQ-07",
+      "item_id": "PQ-07",
+      "title": "goods.api_hook (admin-configured) is passed straight to file_get_contents() with no scheme/host validation and carries order PII -> second-order blind SSRF + cleartext PII egress",
+      "severity": "medium",
+      "confidence": 0.78,
+      "verdict": "confirmed-code-path / conditionally-exploitable (second-order; admin precondition)",
+      "file": "app/Jobs/ApiHook.php",
+      "line": 85,
+      "sink_type": "SSRF (indirect / admin-configured) with PII egress",
+      "source": "goods.api_hook column (database/sql/install.sql:384, TEXT, no default) written only from the Dcat admin goods form (app/Admin/Controllers/GoodsController.php:155, no rules()/validation); read back in the job via GoodsService::detail() (app/Service/GoodsService.php:65-73, plain where('id',$id)->first()) at app/Jobs/ApiHook.php:60. Request body fields come from the order row and goods row (app/Jobs/ApiHook.php:65-74).",
+      "sink": "stream_context_create(['http'=>['method'=>'POST','header'=>'Content-type: application/json','content'=>json_encode($postdata)]]) then file_get_contents($goodInfo->api_hook, false, $context) at app/Jobs/ApiHook.php:77-85.",
+      "reachability": "OrderProcessService::completedOrder() dispatches ApiHook::dispatch($order) unconditionally right after DB::commit() (app/Service/OrderProcessService.php:452), and the method is reached from the payment notify callbacks (e.g. routes/common/pay.php:28 GET pay/yipay/notify_url -> app/Http/Controllers/Pay/YipayController.php:101) as well as the order-query 're-check' path. The job is queued: .env.example:36 QUEUE_CONNECTION=redis and conf/supervisord.conf:32 runs 'php /app/artisan queue:work --tries=3', so the outbound request is issued by the worker (different network position than the web response). The URL target itself is NOT attacker-controlled at trigger time: it can only be written by an authenticated admin because the goods resource lives under config('admin.route.middleware') = ['web','admin','admin.force-password'] (config/admin.php:74, route registered at app/Admin/routes.php:13).",
+      "preconditions": "1) An authenticated admin (or anything able to write the goods row: DB/ledger tampering, backup restore, install-time SQL) has set goods.api_hook to a URL. 2) That goods is on sale and ordered, and the order reaches completedOrder() (sig-verified payment notify or a re-check). 3) The job runs with allow_url_fopen enabled - the shipped conf/php.ini contains no allow_url_fopen directive (grep: no match), so PHP's http wrapper is active. Default install is NOT vulnerable: api_hook has no default (database/sql/install.sql:384) and the job returns early on empty (app/Jobs/ApiHook.php:62).",
+      "impact": "Any host/scheme string stored in api_hook is fetched from the queue worker: http://, http://127.0.0.1:port/, http://169.254.169.254/, docker-bridge/internal service names are all accepted (no scheme allowlist, no private-IP denial, no redirect limiting). Because method and body are attacker(chosen-by-writer)-controlled (POST + JSON, app/Jobs/ApiHook.php:77-83), this is not just blind GET SSRF: it can drive internal JSON endpoints. The same request body ships order title, order_sn, customer email, actual_price and the free-form order info (app/Jobs/ApiHook.php:65-74) in cleartext over http:// to that arbitrary host -> internal-network reachability plus customer PII / commerce data exfiltration. The request return value is discarded, so impact is blind from the attacker's HTTP perspective (no response passthrough).",
+      "evidence": "EVID_SSRF_URL_NORMALIZATION: no normalization/validation exists anywhere on the path - app/Admin/Controllers/GoodsController.php:155 is a bare $form->textarea('api_hook') with no ->rules(), app/Models/Goods.php has no setApiHookAttribute mutator, app/Service/GoodsService.php:65-73 performs a plain Eloquent lookup, and (grep over app/) the only two references to api_hook are app/Admin/Controllers/GoodsController.php:123,155 and app/Jobs/ApiHook.php:62,85. EVID_SSRF_FINAL_URL: app/Jobs/ApiHook.php:60 $goodInfo = $this->goodsService->detail($this->order->goods_id); :62 guard empty($goodInfo->api_hook); :84-85 $context = stream_context_create($opts); file_get_contents($goodInfo->api_hook, false, $context) - the DB value is used verbatim as the URL. EVID_SSRF_DNS_INNER_BLOCK: no filter_var/FILTER_VALIDATE_URL, no gethostbyname/DNS check, no 127.0.0.0-8 / 10/8 / 172.16/12 / 192.168/16 / 169.254/16 denylist anywhere in app/Jobs/ApiHook.php (whole file is 87 lines, reproduced above) -> internal targets are reachable by construction. EVID_SSRF_EXECUTION_RESPONSE: [Not obtained - MODE=static, no container/queue worker started, no payload sent per auditor rules]. Data-flow evidence: OrderProcessService.php:452 -> ApiHook::dispatch; payload fields ApiHook.php:65-74 <- Order model; return value of file_get_contents unused (ApiHook.php:85) => blind. Related same-class sink observed while auditing the sibling job: app/Jobs/BarkPush.php:65 $apiUrl = dujiaoka_config_get('bark_server') .'/'. dujiaoka_config_get('bark_token') used as a Guzzle base URI (admin-set at app/Admin/Forms/SystemSetting.php:69, cache write at app/Admin/Forms/SystemSetting.php:20).",
+      "false_positive_counter_check": "Rule 8 analysis: (a) the URL is admin-controlled (R=1), which makes this second-order SSRF - an anonymous customer can only cause a request to an already-configured endpoint, not choose it; grep shows no non-admin write path to goods.api_hook (Goods extends App\\Models\\BaseModel with no $guarded=[] and no api_hook mass-assignment; all goods writes go through the admin repository app/Admin/Repositories/Goods.php and GoodsController::form()). (b) Default/stock installs are not affected because the column is empty and app/Jobs/ApiHook.php:62 returns early. (c) The response body is never returned to any HTTP client (line 85 discards it, no $http_response_header use), so classic internal-data-leak SSRF is not possible; only blind interaction/egress. (d) Laravel's error handler in the worker turns the file_get_contents warning into a logged exception, not a web-visible disclosure. Net determination: a genuine missing-control defect (SSRF + PII egress primitive) that requires an admin-side precondition, hence medium and 'confirmed-code-path / conditionally exploitable' rather than high/anonymous.",
+      "remediation": "1) Validate api_hook on write: Dcat rule ->rules('nullable|url:http,https') plus a server-side check (parse_url scheme in {https}, host not in loopback/link-local/RFC1918 after resolving, no userinfo). 2) In app/Jobs/ApiHook.php replace the raw stream wrapper with an HTTP client that pins the resolved IP, disallows redirects to a different host, sets a short timeout, and only allows https. 3) Keep a machine-readable allowlist of webhook hosts in config instead of free text. 4) Send only the minimum identifiers (order_sn + a signed token) so the receiver can pull the details over TLS, or at least force https so email/order_info are not sent in cleartext. 5) Apply the same hardening to the sibling sinks app/Jobs/BarkPush.php:65 (bark_server) and app/Jobs/ServerJiang.php:70 (server_jiang_token path segment)."
+    }
+  ],
+  "rejected": [
+    {
+      "id": "PQ-07-R1",
+      "title": "SSRF via app/Jobs/ServerJiang.php:70 (hardcoded https://sctapi.ftqq.com/ + admin token)",
+      "reason": "Sink host is a compile-time literal: app/Jobs/ServerJiang.php:70 file_get_contents('https://sctapi.ftqq.com/' . $apiToken . '.send', false, $context). The only variable part is the path segment, taken from dujiaoka_config_get('server_jiang_token') (app/Helpers/functions.php:58-62 -> Cache::get('system-setting')), which is written exclusively by the admin SystemSetting form (app/Admin/Forms/SystemSetting.php:20 Cache::put, :61 text field) behind config/admin.php:74 admin middleware. Because scheme+host cannot be influenced, this is not SSRF. Possible path-segment CRLF/URL-rewrite abuse was considered (no escaping on $apiToken) but (a) the value is admin-only, so any manipulation is self-inflicted, and (b) whether PHP 8.3's http stream wrapper accepts CR/LF in the request-line path could not be verified in MODE=static (no PHP/container started), so nothing is claimed. downgraded to a hardening note: sanitize the token with a charset regex before concatenation."
+    },
+    {
+      "id": "PQ-07-R2",
+      "title": "Stored XSS via admin goods detail rendering of api_hook (app/Admin/Controllers/GoodsController.php:123 $show->api_hook()->unescape())",
+      "reason": "Real raw-HTML output of a DB value, but the only write path is the same admin form (app/Admin/Controllers/GoodsController.php:155) guarded by config/admin.php:74 ['web','admin','admin.force-password']; grep confirms no non-admin, no frontend and no mass-assignment path writes goods.api_hook (app/Models/Goods.php adds no mutator; GoodsService has no writer). Rendering happens only on the admin-only Show page. Therefore it is self-XSS with no cross-privilege gain -> not a reportable injection finding (would be a low/informational output-encoding hardening item)."
+    },
+    {
+      "id": "PQ-07-R3",
+      "title": "CRLF / header injection or JSON body injection through order fields into the ApiHook request",
+      "reason": "The request headers are a static literal ('Content-type: application/json', app/Jobs/ApiHook.php:80) - no user data enters the header block, so no CRLF injection. The body is built with json_encode($postdata, JSON_UNESCAPED_UNICODE) (app/Jobs/ApiHook.php:81), which escapes quotes/backslashes, so user-controlled order title/info cannot break out of the JSON structure. No injection sink remains."
+    },
+    {
+      "id": "PQ-07-R4",
+      "title": "Local file disclosure through api_hook file:// or php:// stream wrappers",
+      "reason": "api_hook is not scheme-restricted, so file:///php://filter strings parse, but the return value of file_get_contents() is discarded and never assigned, echoed, stored or returned (app/Jobs/ApiHook.php:85 - statement result unused, no $http_response_header usage; the job has no further code after line 85). Content therefore cannot reach any attacker-reachable channel, so this is not an information-disclosure finding. It stays inside PQ-07 as part of the missing scheme-validation defect."
+    }
+  ]
+}

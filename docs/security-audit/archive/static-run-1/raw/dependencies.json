@@ -1,0 +1,978 @@
+{
+  "artifact": "dependencies",
+  "recon_kind": "dependencies",
+  "schema_ref": "tools/php-audit-skills/shared/data_contracts.md#8-dep_risk",
+  "target": ".",
+  "mode": "static",
+  "generated_by": "php-audit-recon/dependencies (pi)",
+  "host_php": "unavailable (no php/composer binary on host)",
+  "runtime_used": "docker webdevops/php:8.3 (PHP 8.3.36, Composer 2.10.3), repo mounted read-only at /app",
+  "manifest": {
+    "composer_json": "composer.json",
+    "composer_lock": "composer.lock",
+    "lock_packages": 132,
+    "lock_production": 96,
+    "lock_dev": 36,
+    "lock_in_sync": true,
+    "lock_in_sync_evidence": "composer validate --no-check-publish -> './composer.json is valid' with no 'lock file is not up to date' warning"
+  },
+  "tooling": {
+    "composer_audit": {
+      "command": "composer audit --locked --no-plugins --no-scripts --format=json",
+      "exit_code": 1,
+      "exit_code_reason": "non-zero exit is caused by the abandoned-package report, not by advisories",
+      "advisories": 0,
+      "abandoned_packages": 1,
+      "raw_output": "{\"advisories\": [], \"abandoned\": {\"box/spout\": null}, \"filter\": []}",
+      "human_output": "No security vulnerability advisories found. / Found 1 abandoned package: box/spout"
+    },
+    "vuln_intel_sh": {
+      "command": "bash tools/php-audit-skills/tools/vuln_intel.sh composer.lock docs/security-audit/raw/dependency-intel",
+      "packages_parsed": 132,
+      "sources": [
+        "osv.dev",
+        "cve.circl.lu"
+      ],
+      "result": "0 advisories",
+      "output_file": "docs/security-audit/raw/dependency-intel/vuln_intel.json"
+    },
+    "independent_semver_verification": {
+      "why": "vuln_intel.sh reported 0; a zero result MUST be proven genuine, not a silent failure (anti_hallucination.md Rule 16)",
+      "control_test": "OSV query for laravel/framework 6.18.30 returned 16 advisories -> pipeline is functional",
+      "packagist_api": "https://packagist.org/api/security-advisories/ returns ALL advisories per package regardless of version; version applicability therefore re-computed locally",
+      "engine": "composer/semver 3.x Semver::satisfies() (satisfies CR-1: real semver, no string comparison)",
+      "advisories_evaluated": 122,
+      "advisories_not_affecting": 122,
+      "advisories_affecting": 0,
+      "unparsable_ranges": 0
+    }
+  },
+  "summary": {
+    "known_vulnerable_dependencies": 0,
+    "advisories_affecting_installed_versions": 0,
+    "abandoned_production_packages": 1,
+    "audit_suppressions_in_composer_json": 0,
+    "composer_plugin_packages": 0,
+    "direct_production_dependencies": 10,
+    "direct_dev_dependencies": 5,
+    "verdict": "No known-vulnerable Composer dependency. One abandoned production transitive package (box/spout). See coverage_gaps for what this result does NOT cover.",
+    "direct_dependency_note": "composer.json also requires the php platform constraint ^8.3, which is not a package and is excluded from these counts"
+  },
+  "dep_risk": [],
+  "dep_risk_note": "Empty per dep_scanner.md CR-5: no advisory matched an installed version. Do NOT populate this array with package-level advisory listings from packagist - those are version-unfiltered and would be fabricated findings (CR-1/CR-2).",
+  "abandoned": [
+    {
+      "package": "box/spout",
+      "installed_version": "v3.3.0",
+      "dependency_type": "production",
+      "dependency_depth": "transitive",
+      "required_by": "dcat/easy-excel 1.1.0 (composer.lock: dcat/easy-excel requires \"box/spout\": \"~3\")",
+      "declared_abandoned_in_lock": true,
+      "evidence": "composer.lock packages[box/spout].abandoned = true; composer audit reports 'Found 1 abandoned package: box/spout', suggested replacement: none",
+      "replacement": "openspout/openspout is the community successor [Needs Verification: composer audit itself prints 'none' for a suggested replacement, so this is not tool-confirmed]",
+      "reachability_note": "Reached only through dcat/easy-excel Excel import/export. Any Dcat-admin import/export feature that parses operator-supplied XLSX/CSV is the exposure path. [Needs Verification: consumer call sites are a sinks-phase concern, not established here]",
+      "risk": "low"
+    }
+  ],
+  "inventory": {
+    "direct_production": [
+      {
+        "package": "laravel/framework",
+        "constraint": "^12.69",
+        "installed": "v12.70.1"
+      },
+      {
+        "package": "dcat/laravel-admin",
+        "constraint": "2.2.5 (exact)",
+        "installed": "v2.2.5"
+      },
+      {
+        "package": "dcat/easy-excel",
+        "constraint": "^1.1",
+        "installed": "1.1.0"
+      },
+      {
+        "package": "guzzlehttp/guzzle",
+        "constraint": "^7.9",
+        "installed": "7.16.0"
+      },
+      {
+        "package": "jenssegers/agent",
+        "constraint": "^2.6",
+        "installed": "v2.6.4"
+      },
+      {
+        "package": "laravel/tinker",
+        "constraint": "^2.11",
+        "installed": "v2.11.1"
+      },
+      {
+        "package": "mews/captcha",
+        "constraint": "^3.5.1",
+        "installed": "3.5.1"
+      },
+      {
+        "package": "simplesoftwareio/simple-qrcode",
+        "constraint": "^4.2",
+        "installed": "4.2.0"
+      },
+      {
+        "package": "stripe/stripe-php",
+        "constraint": "^18.0",
+        "installed": "v18.2.0"
+      },
+      {
+        "package": "xhat/payjs-laravel",
+        "constraint": "^1.6",
+        "installed": "1.6.0"
+      }
+    ],
+    "direct_dev": [
+      {
+        "package": "fakerphp/faker",
+        "constraint": "^1.23",
+        "installed": "v1.24.1"
+      },
+      {
+        "package": "mockery/mockery",
+        "constraint": "^1.6",
+        "installed": "1.6.15"
+      },
+      {
+        "package": "nunomaduro/collision",
+        "constraint": "^8.9",
+        "installed": "v8.9.5"
+      },
+      {
+        "package": "phpunit/phpunit",
+        "constraint": "^11.0",
+        "installed": "11.5.57"
+      },
+      {
+        "package": "spatie/laravel-ignition",
+        "constraint": "^2.9",
+        "installed": "2.12.1"
+      }
+    ],
+    "direct_outdated": [
+      {
+        "package": "laravel/framework",
+        "installed": "v12.70.1",
+        "latest": "v13.38.0",
+        "release_age": "from this week"
+      },
+      {
+        "package": "guzzlehttp/guzzle",
+        "installed": "7.16.0",
+        "latest": "8.3.0",
+        "release_age": "from this week"
+      },
+      {
+        "package": "laravel/tinker",
+        "installed": "v2.11.1",
+        "latest": "v3.0.2",
+        "release_age": "8 months old"
+      },
+      {
+        "package": "phpunit/phpunit",
+        "installed": "11.5.57",
+        "latest": "12.5.40",
+        "release_age": "2 weeks old"
+      },
+      {
+        "package": "stripe/stripe-php",
+        "installed": "v18.2.0",
+        "latest": "v22.0.0",
+        "release_age": "11 months old"
+      }
+    ],
+    "maintenance_status": "All 10 production direct dependencies are actively maintained; none has a last release older than 2 years; composer reports abandoned=false for every direct dependency."
+  },
+  "supply_chain": {
+    "dist_hosts": {
+      "api.github.com": 132
+    },
+    "non_github_sources": [],
+    "typosquat_candidates": [],
+    "composer_plugin_packages": [],
+    "install_hook_scripts": "No dependency declares composer install/update hooks. composer.json scripts are limited to post-autoload-dump (Laravel package:discover), post-root-package-install (.env copy) and post-create-project-cmd (key:generate): composer.json:58-70. No eval/base64_decode/curl-outbound in scripts.",
+    "vcs_fork_dependency": {
+      "package": "dcat/laravel-admin",
+      "constraint": "2.2.5 (exact pin)",
+      "requirement": "composer.json:16",
+      "vcs_repository": "composer.json:8-12 -> type=vcs, url=https://github.com/Cecil98/dcat-admin",
+      "resolved_source": "composer.lock: https://github.com/Cecil98/dcat-admin.git @ 8ff1f8225351824f454f57388e8be812e3870407",
+      "observation": "The admin panel - the highest-privilege code in the app - is resolved from a personal GitHub fork rather than the upstream Dcat-Admin distribution, and is pinned to an exact version so it receives no upstream patches.",
+      "status": "[Needs Verification] Fork legitimacy and delta vs upstream were NOT established in this phase (no network diff of the fork performed). Flagged for the audit owner, not asserted as malicious.",
+      "risk": "medium"
+    },
+    "audit_suppression": "composer.json contains no audit.ignore / audit config (verified: jq '.audit' -> null). No advisories are being hidden by configuration."
+  },
+  "dev_exposure": {
+    "cve_2017_9841_phpunit": {
+      "applicable": false,
+      "reason": "phpunit installed version 11.5.57 is outside the affected range (>=5.0.10,<5.6.3 | >=4.8.19,<4.8.28), and vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php does not exist in the working tree",
+      "evidence": [
+        "vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php absent",
+        "composer.lock phpunit/phpunit = 11.5.57"
+      ]
+    },
+    "web_exposure": {
+      "document_root": "/app/public (Dockerfile:3 WEB_DOCUMENT_ROOT=/app/public; conf/default.conf:4)",
+      "vendor_web_accessible": false,
+      "reason": "vendor/ and composer.lock sit above the document root, so no dependency artefact is servable by nginx"
+    },
+    "production_install_mode": {
+      "no_dev": true,
+      "evidence": [
+        "Dockerfile:9 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader",
+        "Dockerfile-ARM64:31 same --no-dev flag",
+        ".dockerignore excludes vendor, tests, phpunit.xml, tools"
+      ]
+    },
+    "working_tree_caveat": "The working tree has a DEV install (vendor/composer/installed.json .dev=true, 132 packages incl. phpunit and fakerphp). This is fine for the Docker image, but a bare-metal/rsync deployment of the tree would ship dev dependencies. Risk stays low because the document root is public/.",
+    "laravel_tinker_in_production": {
+      "installed": "laravel/tinker v2.11.1 + psy/psysh v0.12.24 (production require, composer.json:17)",
+      "exposure": "No reference to tinker / Psy\\\\Shell / psysh found in app/, routes/ or config/ (grep returned nothing), so no application route evaluates PsySH input.",
+      "advisory": "CVE-2026-25129 (PsySH local privilege escalation via .psysh.php auto-load) does NOT affect 0.12.24 (affected: <=0.11.22 | >=0.12.0,<=0.12.18)",
+      "note": "An interactive shell in a production image is attack surface only if something can invoke it; flag for the sinks phase rather than as a dependency finding."
+    }
+  },
+  "generated_at": "2026-10-24T06:25:19Z",
+  "advisory_context_non_findings": {
+    "purpose": "Audit trail. These advisories exist for packages that ARE installed, but NONE apply to the installed version. They are listed so the next phase does not re-report them, and so any version downgrade in the PHP 8.3 upgrade branch is caught.",
+    "verification": "Every entry re-checked with composer/semver Semver::satisfies(installed_version, affected_range) -> affects_installed_version",
+    "counts": {
+      "evaluated_2025_2026": 52,
+      "affecting_installed_version": 0
+    },
+    "downgrade_guardrail": "composer.lock versions are at or above every published 2025-2026 fix boundary for these packages. If the upgrade branch relaxes or re-resolves constraints, re-verify each package against the affected_range strings below before merging.",
+    "items": [
+      {
+        "package": "guzzlehttp/guzzle",
+        "installed_version": "7.16.0",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-gcrk-3vtt-1r14",
+        "cve": "CVE-2026-69246",
+        "ghsa": "GHSA-v5mv-p594-2x33",
+        "severity": "high",
+        "title": "Guzzle: Noncanonical host can bypass host-based checks",
+        "affected_range": ">=8.0.0,<8.0.1|<7.15.2",
+        "reported_at": "2026-08-03 21:07:26",
+        "affects_installed_version": false
+      },
+      {
+        "package": "guzzlehttp/guzzle",
+        "installed_version": "7.16.0",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-cnw1-2ytm-cgr8",
+        "cve": "CVE-2026-69245",
+        "ghsa": "GHSA-f7vp-7xgx-4w4r",
+        "severity": "medium",
+        "title": "Guzzle: Noncanonical cookie domain keeps subdomain scope",
+        "affected_range": ">=8.0.0,<8.0.1|<7.15.2",
+        "reported_at": "2026-08-03 21:05:26",
+        "affects_installed_version": false
+      },
+      {
+        "package": "guzzlehttp/guzzle",
+        "installed_version": "7.16.0",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-fy2t-3c5f-827y",
+        "cve": "CVE-2026-67354",
+        "ghsa": "GHSA-h95v-h523-3mw8",
+        "severity": "medium",
+        "title": "Guzzle: URI fragments disclosed in redirect Referer headers",
+        "affected_range": "<7.15.1",
+        "reported_at": "2026-07-20 23:28:36",
+        "affects_installed_version": false
+      },
+      {
+        "package": "guzzlehttp/guzzle",
+        "installed_version": "7.16.0",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-qxvb-2bpp-dnk6",
+        "cve": "CVE-2026-67355",
+        "ghsa": "GHSA-wm3w-8rrp-j577",
+        "severity": "medium",
+        "title": "Guzzle: Host-only cookie scope is not preserved",
+        "affected_range": "<7.15.1",
+        "reported_at": "2026-07-20 23:27:49",
+        "affects_installed_version": false
+      },
+      {
+        "package": "guzzlehttp/guzzle",
+        "installed_version": "7.16.0",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-bbs6-q5q9-f3t4",
+        "cve": "CVE-2026-67353",
+        "ghsa": "GHSA-f283-ghqc-fg79",
+        "severity": "medium",
+        "title": "Guzzle: Unbounded response cookies risk denial of service",
+        "affected_range": "<7.15.1",
+        "reported_at": "2026-07-20 23:27:02",
+        "affects_installed_version": false
+      },
+      {
+        "package": "guzzlehttp/guzzle",
+        "installed_version": "7.16.0",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-bcdd-5xc7-gwfb",
+        "cve": "CVE-2026-59883",
+        "ghsa": "GHSA-g446-98w2-8p5w",
+        "severity": "medium",
+        "title": "Guzzle: Cookie Disclosure and Injection via IP-Address Domains",
+        "affected_range": "<7.12.3",
+        "reported_at": "2026-07-20 22:00:09",
+        "affects_installed_version": false
+      },
+      {
+        "package": "guzzlehttp/guzzle",
+        "installed_version": "7.16.0",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-pwsk-hy21-4gby",
+        "cve": "CVE-2026-67339",
+        "ghsa": "GHSA-94pj-82f3-465w",
+        "severity": "medium",
+        "title": "Guzzle: Proxy-Authorization headers can be sent to origin servers",
+        "affected_range": "<7.14.2",
+        "reported_at": "2026-07-20 21:46:02",
+        "affects_installed_version": false
+      },
+      {
+        "package": "guzzlehttp/guzzle",
+        "installed_version": "7.16.0",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-93qv-9n9h-6k6p",
+        "cve": "CVE-2026-55767",
+        "ghsa": "guzzlehttp/guzzle/CVE-2026-55767.yaml",
+        "severity": "medium",
+        "title": "Dot-only cookie domains match all hosts",
+        "affected_range": "<7.12.1",
+        "reported_at": "2026-06-18 14:12:49",
+        "affects_installed_version": false
+      },
+      {
+        "package": "guzzlehttp/guzzle",
+        "installed_version": "7.16.0",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-k22t-f949-t9g6",
+        "cve": "CVE-2026-55568",
+        "ghsa": "guzzlehttp/guzzle/CVE-2026-55568.yaml",
+        "severity": "medium",
+        "title": "Silent HTTPS proxy downgrade to cleartext",
+        "affected_range": "<7.12.1",
+        "reported_at": "2026-06-18 14:12:49",
+        "affects_installed_version": false
+      },
+      {
+        "package": "guzzlehttp/psr7",
+        "installed_version": "2.13.2",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-vznr-tgp9-fd7d",
+        "cve": "CVE-2026-59882",
+        "ghsa": "GHSA-c2w2-prh8-qm98",
+        "severity": "medium",
+        "title": "guzzlehttp/psr7: Host Confusion via Weak URI Host Validation",
+        "affected_range": "<2.12.3",
+        "reported_at": "2026-07-21 18:35:25",
+        "affects_installed_version": false
+      },
+      {
+        "package": "guzzlehttp/psr7",
+        "installed_version": "2.13.2",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-7qs6-zvnz-h66r",
+        "cve": "CVE-2026-55766",
+        "ghsa": "guzzlehttp/psr7/CVE-2026-55766.yaml",
+        "severity": "medium",
+        "title": "CRLF injection in HTTP start-line serialization",
+        "affected_range": "<2.12.1",
+        "reported_at": "2026-06-18 09:49:37",
+        "affects_installed_version": false
+      },
+      {
+        "package": "guzzlehttp/psr7",
+        "installed_version": "2.13.2",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-gm5x-j3mz-71n9",
+        "cve": "CVE-2026-49214",
+        "ghsa": "guzzlehttp/psr7/CVE-2026-49214.yaml",
+        "severity": "medium",
+        "title": "CRLF injection via URI host component",
+        "affected_range": "<2.10.2",
+        "reported_at": "2026-05-25 22:58:15",
+        "affects_installed_version": false
+      },
+      {
+        "package": "guzzlehttp/psr7",
+        "installed_version": "2.13.2",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-jj5t-2zs1-dcfm",
+        "cve": "CVE-2026-48998",
+        "ghsa": "guzzlehttp/psr7/CVE-2026-48998.yaml",
+        "severity": "medium",
+        "title": "Host confusion via authority reinterpretation",
+        "affected_range": "<2.10.2",
+        "reported_at": "2026-05-25 22:58:15",
+        "affects_installed_version": false
+      },
+      {
+        "package": "laravel/framework",
+        "installed_version": "12.70.1",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-b41t-wbzk-9q51",
+        "cve": "CVE-2026-114509",
+        "ghsa": "GHSA-f9x3-7vq9-cph6",
+        "severity": "critical",
+        "title": "Laravel TokenGuard authentication bypass through non-string API credentials",
+        "affected_range": "<12.68.0|>=13.0.0,<13.29.0",
+        "reported_at": "2026-10-23 21:50:27",
+        "affects_installed_version": false
+      },
+      {
+        "package": "laravel/framework",
+        "installed_version": "12.70.1",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-4hy6-m98j-dz9f",
+        "cve": "CVE-2026-114508",
+        "ghsa": "GHSA-5wcm-3v2w-8362",
+        "severity": "medium",
+        "title": "Laravel relationship inclusion can trigger unauthorized data destruction",
+        "affected_range": ">=13.0.0,<13.27.0|>=12.45.0,<12.68.0",
+        "reported_at": "2026-10-23 21:47:48",
+        "affects_installed_version": false
+      },
+      {
+        "package": "laravel/framework",
+        "installed_version": "12.70.1",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-d5tc-s1qs-h781",
+        "cve": "CVE-2026-102279",
+        "ghsa": "GHSA-jh5r-qr3c-85q8",
+        "severity": "low",
+        "title": "Laravel: XSS in Debug Page Information",
+        "affected_range": ">=13.0.0,<13.30.0|<12.69.0",
+        "reported_at": "2026-09-29 18:24:25",
+        "affects_installed_version": false
+      },
+      {
+        "package": "laravel/framework",
+        "installed_version": "12.70.1",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-m5cs-t1y6-qpcs",
+        "cve": null,
+        "ghsa": "GHSA-crmm-hgp2-wgrp",
+        "severity": "medium",
+        "title": "Laravel Framework: Temporary Signed URL Path Confusion",
+        "affected_range": "<12.61.1|>=13.0.0,<13.12.0",
+        "reported_at": "2026-06-17 13:54:13",
+        "affects_installed_version": false
+      },
+      {
+        "package": "laravel/framework",
+        "installed_version": "12.70.1",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-3r5d-mb8f-1qw9",
+        "cve": null,
+        "ghsa": "GHSA-5vg9-5847-vvmq",
+        "severity": "high",
+        "title": "Laravel Framework: CRLF injection in default email rule ",
+        "affected_range": "<12.60.0|>=13.0.0,<=13.9.0",
+        "reported_at": "2026-06-17 13:53:44",
+        "affects_installed_version": false
+      },
+      {
+        "package": "laravel/framework",
+        "installed_version": "12.70.1",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-mdq4-51ck-6kdq",
+        "cve": "CVE-2026-48019",
+        "ghsa": "laravel/framework/CVE-2026-48019.yaml",
+        "severity": "unknown",
+        "title": "Laravel CRLF injection in default email rule",
+        "affected_range": ">=9.0.0,<10.0.0|>=10.0.0,<11.0.0|>=11.0.0,<12.0.0|>=12.0.0,<12.60.0|>=13.0.0,<13.10.0",
+        "reported_at": "2026-05-19 18:13:00",
+        "affects_installed_version": false
+      },
+      {
+        "package": "laravel/framework",
+        "installed_version": "12.70.1",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-8qx3-n5y5-vvnd",
+        "cve": "CVE-2025-27515",
+        "ghsa": "GHSA-78fx-h6xr-vch4",
+        "severity": "medium",
+        "title": "Laravel has a File Validation Bypass",
+        "affected_range": "<10.48.29|>=11.0.0,<11.44.1|>=12.0.0,<12.1.1",
+        "reported_at": "2025-03-05 19:09:39",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-m2dq-1fhr-29b1",
+        "cve": null,
+        "ghsa": "GHSA-97jj-33gv-5xf9",
+        "severity": "medium",
+        "title": "league/commonmark: DisallowedRawHtml bypassed when a disallowed tag name ends the raw-HTML literal",
+        "affected_range": ">=1.3.0,<=2.10.1",
+        "reported_at": "2026-09-30 15:36:33",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-m4t9-vsgq-8khn",
+        "cve": null,
+        "ghsa": "GHSA-3q6v-r5mr-hxv8",
+        "severity": "high",
+        "title": "league/commonmark: Quadratic-time denial of service in the GitHub Flavored Markdown Table extension block-start scan",
+        "affected_range": ">=2.0.0,<=2.10.1",
+        "reported_at": "2026-09-30 15:36:13",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-zyf5-hrxv-hrd7",
+        "cve": null,
+        "ghsa": "GHSA-8rr7-cvq3-gmfh",
+        "severity": "high",
+        "title": "league/commonmark: Denial of service via distinctly-named attributes in the Attributes extension",
+        "affected_range": ">=1.5.0,<2.10.0",
+        "reported_at": "2026-09-01 20:28:40",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-nv44-1b4d-6gjg",
+        "cve": null,
+        "ghsa": "GHSA-jjv6-8j6v-6j52",
+        "severity": "high",
+        "title": "league/commonmark: Denial of service in the SmartPunct and Attributes extensions",
+        "affected_range": ">=1.5.0,<2.9.1",
+        "reported_at": "2026-09-01 20:21:45",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-kr3s-894t-g5w2",
+        "cve": null,
+        "ghsa": "GHSA-f8fg-pg57-v4j8",
+        "severity": "high",
+        "title": "league/commonmark XSS: `on*` event-handler filter in `AttributesExtension` bypassed with a U+000C form feed",
+        "affected_range": ">=2.7.0,<2.9.1",
+        "reported_at": "2026-09-01 20:18:29",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-9q1p-3s19-bp1q",
+        "cve": null,
+        "ghsa": "GHSA-j8pm-gj4c-rq4x",
+        "severity": "high",
+        "title": "league/commonmark: Denial of service via crafted code fences, reference links, and emphasis delimiters",
+        "affected_range": ">=0.6.0,<2.9.1",
+        "reported_at": "2026-09-01 20:17:59",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-5mzr-szzf-z6cn",
+        "cve": null,
+        "ghsa": "GHSA-mj63-m3rc-8ppr",
+        "severity": "medium",
+        "title": "league/commonmark: Denial of service via deeply nested XML output",
+        "affected_range": ">=2.0.0,<2.9.0",
+        "reported_at": "2026-08-06 20:42:54",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-cqd6-fg4n-nxpf",
+        "cve": null,
+        "ghsa": "GHSA-mh25-x5hq-wrqp",
+        "severity": "high",
+        "title": "league/commonmark: Denial of service via colliding heading slugs",
+        "affected_range": ">=2.0.0,<2.9.0",
+        "reported_at": "2026-08-06 20:41:45",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-1q6p-sqkj-8mmj",
+        "cve": null,
+        "ghsa": "GHSA-jfm3-95jq-q3rf",
+        "severity": "high",
+        "title": "league/commonmark:  Denial of service via duplicate footnote definitions",
+        "affected_range": ">=1.5.0,<2.9.0",
+        "reported_at": "2026-08-06 20:40:53",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-mc58-w91n-f5gv",
+        "cve": null,
+        "ghsa": "GHSA-g2gp-3wwq-f4ph",
+        "severity": "high",
+        "title": "league/commonmark: Denial of service via adjacent inline attribute blocks",
+        "affected_range": ">=1.5.0,<2.9.0",
+        "reported_at": "2026-08-06 20:39:52",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-t21r-vtr5-3mdz",
+        "cve": "CVE-2026-71488",
+        "ghsa": "GHSA-2q4p-g7hv-5rgv",
+        "severity": "high",
+        "title": "league/commonmark: Quadratic-time denial of service when parsing crafted Markdown",
+        "affected_range": ">=0.6.0,<2.9.0",
+        "reported_at": "2026-08-06 20:37:20",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-scnn-p8mm-jbft",
+        "cve": "CVE-2026-71478",
+        "ghsa": "GHSA-29pj-957v-52mc",
+        "severity": "medium",
+        "title": "league/commonmark: AttributesExtension href/src unsafe-link filter bypass via embedded control bytes",
+        "affected_range": ">=1.5.0,<=2.8.3",
+        "reported_at": "2026-08-06 20:30:39",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-21fb-n1x5-5nf7",
+        "cve": "CVE-2026-33347",
+        "ghsa": "GHSA-hh8v-hgvp-g3f5",
+        "severity": "medium",
+        "title": "league/commonmark has an embed extension allowed_domains bypass",
+        "affected_range": ">=2.3.0,<=2.8.1",
+        "reported_at": "2026-03-19 19:04:24",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-2cx9-ynrq-qdk3",
+        "cve": "CVE-2026-30838",
+        "ghsa": "GHSA-4v6x-c7xx-hw9f",
+        "severity": "medium",
+        "title": "CommonMark has DisallowedRawHtml extension bypass via whitespace in HTML tag names",
+        "affected_range": ">=2.0.0,<=2.8.0",
+        "reported_at": "2026-03-06 23:27:03",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/commonmark",
+        "installed_version": "2.10.4",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-rqc2-tcc6-nc79",
+        "cve": "CVE-2025-46734",
+        "ghsa": "GHSA-3527-qv2q-pfvx",
+        "severity": "medium",
+        "title": "league/commonmark contains a XSS vulnerability in Attributes extension",
+        "affected_range": ">=1.5.0,<2.7.0",
+        "reported_at": "2025-05-05 20:40:36",
+        "affects_installed_version": false
+      },
+      {
+        "package": "league/flysystem",
+        "installed_version": "3.36.0",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-w9tt-7782-78jx",
+        "cve": "CVE-2026-102601",
+        "ghsa": "GHSA-cxf4-7mrp-vvpr",
+        "severity": "low",
+        "title": "Flysystem: WhitespacePathNormalizer's control-character (CorruptedPathDetected) check is bypassed by malformed UTF-8 in the path, affecting every adapter",
+        "affected_range": "<=3.35.2",
+        "reported_at": "2026-09-29 18:10:14",
+        "affects_installed_version": false
+      },
+      {
+        "package": "nesbot/carbon",
+        "installed_version": "3.15.0",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-csyb-yc4p-mnbs",
+        "cve": "CVE-2025-22145",
+        "ghsa": "GHSA-j3f9-p6hm-5w6q",
+        "severity": "medium",
+        "title": "Carbon has an arbitrary file include via unvalidated input passed to Carbon::setLocale",
+        "affected_range": "<2.72.6|>=3.0.0,<3.8.4",
+        "reported_at": "2025-01-08 21:03:28",
+        "affects_installed_version": false
+      },
+      {
+        "package": "phpunit/phpunit",
+        "installed_version": "11.5.57",
+        "dependency_type": "dev",
+        "advisory_id": "PKSA-qccq-2pht-gg3w",
+        "cve": null,
+        "ghsa": "GHSA-mh6w-vxff-9wqp",
+        "severity": "high",
+        "title": "PHPUnit: Argument injection via newline in PHP INI values forwarded to child processes",
+        "affected_range": ">=13.1.5,<13.1.6|>=12.5.21,<12.5.22",
+        "reported_at": "2026-04-22 14:56:07",
+        "affects_installed_version": false
+      },
+      {
+        "package": "phpunit/phpunit",
+        "installed_version": "11.5.57",
+        "dependency_type": "dev",
+        "advisory_id": "PKSA-5jz8-6tcw-pbk4",
+        "cve": "CVE-2026-41570",
+        "ghsa": "phpunit/phpunit/CVE-2026-41570.yaml",
+        "severity": "high",
+        "title": "Argument injection via newline in PHP INI values forwarded to child processes",
+        "affected_range": ">=12.5.21,<12.5.22|>=13.1.5,<13.1.6",
+        "reported_at": "2026-04-17 12:52:26",
+        "affects_installed_version": false
+      },
+      {
+        "package": "phpunit/phpunit",
+        "installed_version": "11.5.57",
+        "dependency_type": "dev",
+        "advisory_id": "PKSA-z3gr-8qht-p93v",
+        "cve": "CVE-2026-24765",
+        "ghsa": "phpunit/phpunit/CVE-2026-24765.yaml",
+        "severity": "high",
+        "title": "Unsafe Deserialization in PHPT Code Coverage Handling",
+        "affected_range": ">=0,<8.5.52|>=9.0.0,<9.6.33|>=10.0.0,<10.5.62|>=11.0.0,<11.5.50|>=12.0.0,<12.5.8",
+        "reported_at": "2026-01-27 05:21:14",
+        "affects_installed_version": false
+      },
+      {
+        "package": "psy/psysh",
+        "installed_version": "0.12.24",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-4s4z-t146-6123",
+        "cve": "CVE-2026-25129",
+        "ghsa": "GHSA-4486-gxhx-5mg7",
+        "severity": "medium",
+        "title": "PsySH has Local Privilege Escalation via CWD .psysh.php auto-load",
+        "affected_range": "<=0.11.22|>=0.12.0,<=0.12.18",
+        "reported_at": "2026-01-30 21:28:44",
+        "affects_installed_version": false
+      },
+      {
+        "package": "symfony/http-foundation",
+        "installed_version": "7.4.21",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-xmwy-rmx5-m7h4",
+        "cve": "CVE-2026-108082",
+        "ghsa": "symfony/http-foundation/CVE-2026-108082.yaml",
+        "severity": "unknown",
+        "title": "CVE-2026-108082: ReDoS in HeaderUtils::split() Reachable Through the Cache-Control Request Header",
+        "affected_range": ">=5.4.1,<5.4.54|>=6.0.1,<6.1.0|>=6.1.0,<6.2.0|>=6.2.0,<6.3.0|>=6.3.0,<6.4.0|>=6.4.0,<6.4.46|>=7.0.0,<7.1.0|>=7.1.0,<7.2.0|>=7.2.0,<7.3.0|>=7.3.0,<7.4.0|>=7.4.0,<7.4.19|>=8.0.0,<8.1.0|>=8.1.0,<8.1.7",
+        "reported_at": "2026-09-15 08:00:00",
+        "affects_installed_version": false
+      },
+      {
+        "package": "symfony/http-foundation",
+        "installed_version": "7.4.21",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-y6py-qpv1-h52p",
+        "cve": "CVE-2026-48736",
+        "ghsa": "symfony/http-foundation/CVE-2026-48736.yaml",
+        "severity": "medium",
+        "title": "CVE-2026-48736: IpUtils::PRIVATE_SUBNETS Omits IPv6 Transition Forms (6to4, NAT64, Teredo, IPv4-compatible): SSRF Bypass in NoPrivateNetworkHttpClient",
+        "affected_range": ">=6.4.0,<6.4.41|>=7.0.0,<7.1.0|>=7.1.0,<7.2.0|>=7.2.0,<7.3.0|>=7.3.0,<7.4.0|>=7.4.0,<7.4.13|>=8.0.0,<8.0.13",
+        "reported_at": "2026-05-26 08:00:00",
+        "affects_installed_version": false
+      },
+      {
+        "package": "symfony/http-foundation",
+        "installed_version": "7.4.21",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-365x-2zjk-pt47",
+        "cve": "CVE-2025-64500",
+        "ghsa": "symfony/http-foundation/CVE-2025-64500.yaml",
+        "severity": "high",
+        "title": "CVE-2025-64500: Incorrect parsing of PATH_INFO can lead to limited authorization bypass",
+        "affected_range": ">=2.0.0,<3.0.0|>=3.0.0,<4.0.0|>=4.0.0,<5.0.0|>=5.0.0,<5.1.0|>=5.1.0,<5.2.0|>=5.2.0,<5.3.0|>=5.3.0,<5.4.0|>=5.4.0,<5.4.50|>=6.0.0,<6.1.0|>=6.1.0,<6.2.0|>=6.2.0,<6.3.0|>=6.3.0,<6.4.0|>=6.4.0,<6.4.29|>=7.0.0,<7.1.0|>=7.1.0,<7.2.0|>=7.2.0,<7.3.0|>=7.3.0,<7.3.7",
+        "reported_at": "2025-11-12 11:09:14",
+        "affects_installed_version": false
+      },
+      {
+        "package": "symfony/http-kernel",
+        "installed_version": "7.4.21",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-dw7n-x7f5-zf63",
+        "cve": "CVE-2026-45075",
+        "ghsa": "symfony/http-kernel/CVE-2026-45075.yaml",
+        "severity": "high",
+        "title": "CVE-2026-45075: HEAD Request Bypasses methods: ['GET'] Filter in #[IsGranted] / #[IsSignatureValid] / #[IsCsrfTokenValid]",
+        "affected_range": ">=7.4.0,<7.4.12|>=8.0.0,<8.0.12",
+        "reported_at": "2026-05-20 08:00:00",
+        "affects_installed_version": false
+      },
+      {
+        "package": "symfony/mailer",
+        "installed_version": "7.4.19",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-28rh-rzzn-djk4",
+        "cve": "CVE-2026-45068",
+        "ghsa": "symfony/mailer/CVE-2026-45068.yaml",
+        "severity": "medium",
+        "title": "CVE-2026-45068: Argument Injection in SendmailTransport via Dash-Prefixed Recipient Address",
+        "affected_range": ">=2.0.0,<3.0.0|>=3.0.0,<4.0.0|>=4.0.0,<5.0.0|>=5.0.0,<5.1.0|>=5.1.0,<5.2.0|>=5.2.0,<5.3.0|>=5.3.0,<5.4.0|>=5.4.0,<5.4.52|>=6.0.0,<6.1.0|>=6.1.0,<6.2.0|>=6.2.0,<6.3.0|>=6.3.0,<6.4.0|>=6.4.0,<6.4.40|>=7.0.0,<7.1.0|>=7.1.0,<7.2.0|>=7.2.0,<7.3.0|>=7.3.0,<7.4.0|>=7.4.0,<7.4.12|>=8.0.0,<8.0.12",
+        "reported_at": "2026-05-20 08:00:00",
+        "affects_installed_version": false
+      },
+      {
+        "package": "symfony/mime",
+        "installed_version": "7.4.19",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-wtxr-p26d-nn42",
+        "cve": "CVE-2026-45070",
+        "ghsa": "symfony/mime/CVE-2026-45070.yaml",
+        "severity": "medium",
+        "title": "CVE-2026-45070: Email Header Injection via Non-Token Characters in Mime Parameter Names",
+        "affected_range": ">=2.0.0,<3.0.0|>=3.0.0,<4.0.0|>=4.0.0,<5.0.0|>=5.0.0,<5.1.0|>=5.1.0,<5.2.0|>=5.2.0,<5.3.0|>=5.3.0,<5.4.0|>=5.4.0,<5.4.52|>=6.0.0,<6.1.0|>=6.1.0,<6.2.0|>=6.2.0,<6.3.0|>=6.3.0,<6.4.0|>=6.4.0,<6.4.40|>=7.0.0,<7.1.0|>=7.1.0,<7.2.0|>=7.2.0,<7.3.0|>=7.3.0,<7.4.0|>=7.4.0,<7.4.12|>=8.0.0,<8.0.12",
+        "reported_at": "2026-05-20 08:00:00",
+        "affects_installed_version": false
+      },
+      {
+        "package": "symfony/mime",
+        "installed_version": "7.4.19",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-2n2k-66v2-bwg3",
+        "cve": "CVE-2026-45067",
+        "ghsa": "symfony/mime/CVE-2026-45067.yaml",
+        "severity": "high",
+        "title": "CVE-2026-45067: Email Header / SMTP Command Injection via CRLF in Symfony\\Component\\Mime\\Address",
+        "affected_range": ">=2.0.0,<3.0.0|>=3.0.0,<4.0.0|>=4.0.0,<5.0.0|>=5.0.0,<5.1.0|>=5.1.0,<5.2.0|>=5.2.0,<5.3.0|>=5.3.0,<5.4.0|>=5.4.0,<5.4.52|>=6.0.0,<6.1.0|>=6.1.0,<6.2.0|>=6.2.0,<6.3.0|>=6.3.0,<6.4.0|>=6.4.0,<6.4.40|>=7.0.0,<7.1.0|>=7.1.0,<7.2.0|>=7.2.0,<7.3.0|>=7.3.0,<7.4.0|>=7.4.0,<7.4.12|>=8.0.0,<8.0.12",
+        "reported_at": "2026-05-20 08:00:00",
+        "affects_installed_version": false
+      },
+      {
+        "package": "symfony/polyfill-intl-idn",
+        "installed_version": "1.43.0",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-dwsq-ppd2-mb1x",
+        "cve": "CVE-2026-46644",
+        "ghsa": "symfony/polyfill-intl-idn/CVE-2026-46644.yaml",
+        "severity": "low",
+        "title": "CVE-2026-46644: symfony/polyfill-intl-idn accepts xn-- labels whose Punycode payload decodes to ASCII-only: insecure equivalence",
+        "affected_range": ">=1.17.1,<1.38.1",
+        "reported_at": "2026-05-26 08:00:00",
+        "affects_installed_version": false
+      },
+      {
+        "package": "symfony/process",
+        "installed_version": "7.4.21",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-rkkf-636k-qjb3",
+        "cve": "CVE-2026-24739",
+        "ghsa": "GHSA-r39x-jcww-82v6",
+        "severity": "medium",
+        "title": "Symfony's incorrect argument escaping under MSYS2/Git Bash can lead to destructive file operations on Windows",
+        "affected_range": ">=8.0,<8.0.5|>=7.4,<7.4.5|>=7.3,<7.3.11|>=6.4,<6.4.33|<5.4.51",
+        "reported_at": "2026-01-28 21:28:10",
+        "affects_installed_version": false
+      },
+      {
+        "package": "symfony/routing",
+        "installed_version": "7.4.21",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-bf7t-jnpz-492k",
+        "cve": "CVE-2026-48784",
+        "ghsa": "symfony/routing/CVE-2026-48784.yaml",
+        "severity": "medium",
+        "title": "CVE-2026-48784: UrlGenerator Dot-Segment Encoding Skips Every Other Chained `../` or `./` → Generated URL Collapses Off-Route Under RFC 3986 Normalization",
+        "affected_range": ">=2.0.0,<3.0.0|>=3.0.0,<4.0.0|>=4.0.0,<5.0.0|>=5.0.0,<5.1.0|>=5.1.0,<5.2.0|>=5.2.0,<5.3.0|>=5.3.0,<5.4.0|>=5.4.0,<5.4.53|>=6.0.0,<6.1.0|>=6.1.0,<6.2.0|>=6.2.0,<6.3.0|>=6.3.0,<6.4.0|>=6.4.0,<6.4.41|>=7.0.0,<7.1.0|>=7.1.0,<7.2.0|>=7.2.0,<7.3.0|>=7.3.0,<7.4.0|>=7.4.0,<7.4.13|>=8.0.0,<8.0.13",
+        "reported_at": "2026-05-26 08:00:00",
+        "affects_installed_version": false
+      },
+      {
+        "package": "symfony/routing",
+        "installed_version": "7.4.21",
+        "dependency_type": "production",
+        "advisory_id": "PKSA-yc7t-91v9-99xs",
+        "cve": "CVE-2026-45065",
+        "ghsa": "symfony/routing/CVE-2026-45065.yaml",
+        "severity": "medium",
+        "title": "CVE-2026-45065: UrlGenerator Route-Requirement Bypass via Unanchored Regex Alternation → Off-Site //host URL Injection",
+        "affected_range": ">=2.0.0,<3.0.0|>=3.0.0,<4.0.0|>=4.0.0,<5.0.0|>=5.0.0,<5.1.0|>=5.1.0,<5.2.0|>=5.2.0,<5.3.0|>=5.3.0,<5.4.0|>=5.4.0,<5.4.52|>=6.0.0,<6.1.0|>=6.1.0,<6.2.0|>=6.2.0,<6.3.0|>=6.3.0,<6.4.0|>=6.4.0,<6.4.40|>=7.0.0,<7.1.0|>=7.1.0,<7.2.0|>=7.2.0,<7.3.0|>=7.3.0,<7.4.0|>=7.4.0,<7.4.12|>=8.0.0,<8.0.12",
+        "reported_at": "2026-05-20 08:00:00",
+        "affects_installed_version": false
+      }
+    ]
+  },
+  "coverage_gaps": [
+    {
+      "area": "No PHP/Composer on the host",
+      "impact": "All Composer work ran inside docker webdevops/php:8.3; results are for PHP 8.3.36 + Composer 2.10.3.",
+      "mitigation": "Docker path used as prescribed; no host-side tooling assumed."
+    },
+    {
+      "area": "Advisory freshness is point-in-time",
+      "impact": "OSV, packagist and cve.circl.lu were queried at recon time; advisories published later are invisible to this artifact.",
+      "mitigation": "Re-run composer audit in CI on every build."
+    },
+    {
+      "area": "No offline advisory database / security-checker",
+      "impact": "enlightn/security-checker and roave/security-advisories were not installed (installation would modify the project, which recon must not do).",
+      "mitigation": "Covered by packagist + OSV + cve.circl.lu instead; the FriendsOfPHP data reaches us through packagist's aggregated feed."
+    },
+    {
+      "area": "cve.circl.lu matching is CPE-prefix based",
+      "impact": "It returned no rows in this run; the vendor/product CPE mapping for Composer packages is coarse. Absence there is NOT evidence of absence.",
+      "mitigation": "composer audit + packagist do the authoritative semver matching."
+    },
+    {
+      "area": "No known-malicious-package dataset available offline",
+      "impact": "Backdoor/typosquat detection was limited to structural heuristics (dist host uniformity, plugin types, install hooks, name distance). A compromised-but-well-named package would not be caught.",
+      "mitigation": "All 132 packages resolve to api.github.com with normal vendor/name pairs; no anomalies found, but this is heuristic, not authoritative."
+    },
+    {
+      "area": "No JS/npm dependency audit",
+      "impact": "Frontend asset dependencies were not scanned (out of scope for the PHP dependency recon).",
+      "mitigation": "Run npm audit separately if a package.json is present."
+    },
+    {
+      "area": "Fork delta not diffed",
+      "impact": "The custom dcat-admin fork was identified but not compared against upstream; it could contain patched-in code.",
+      "mitigation": "Explicit follow-up: diff github.com/Cecil98/dcat-admin@8ff1f82 against the upstream Dcat-Admin release."
+    },
+    {
+      "area": "Vulnerable-dependency reachability not established",
+      "impact": "Not applicable here (0 affecting advisories), but the abandoned box/spout code path was not traced to a route.",
+      "mitigation": "Hand off to the sinks phase if an import/export route is in scope."
+    }
+  ],
+  "uncertainties": [
+    "[Needs Verification] openspout/openspout as the box/spout successor is community knowledge, not tool output; composer audit prints 'none'.",
+    "[Needs Verification] Legitimacy of the Cecil98/dcat-admin fork vs upstream was not verified.",
+    "[Needs Verification] Whether any operator deployment path installs without --no-dev (only the two Dockerfiles were inspected).",
+    "[Needs Verification] Derived package counts (96 production / 36 dev) come from composer.lock array membership; composer reports 132 total installed, consistent."
+  ],
+  "no_secrets_note": "No .env values, credentials, cookies, tokens or API keys were read or copied into this artifact. Only package names, versions and public advisory identifiers appear."
+}

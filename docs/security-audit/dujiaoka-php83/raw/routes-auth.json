@@ -1,0 +1,4380 @@
+{
+  "artifact": "routes-auth",
+  "meta": {
+    "recon_kind": "routes-auth",
+    "target": ".",
+    "mode": "static",
+    "generated_at_utc": "2026-02-06T00:00:00Z",
+    "generated_by": "php-audit-recon (routes-auth) on pi",
+    "guidance_consumed": [
+      "tools/php-audit-skills/shared/anti_hallucination.md",
+      "tools/php-audit-skills/shared/data_contracts.md (route_map / auth_matrix / auth_gap_report contracts)",
+      "tools/php-audit-skills/shared/evidence_contract.md (EVID_AUTH_*, EVID_CSRF_*)",
+      "tools/php-audit-skills/shared/sink_definitions.md",
+      "tools/php-audit-skills/shared/php_specific_patterns.md",
+      "tools/php-audit-skills/shared/framework_patterns.md",
+      "tools/php-audit-skills/teams/team2/route_mapper.md"
+    ],
+    "tooling_note": "Host has no php/composer; every PHP command was executed in Docker (webdevops/php:8.3 and dujiaoka:2.1.0-php83) with the repository mounted at /app. No application code, config, database or test was modified.",
+    "secrets_policy": "No .env values, APP_KEY, DB/Redis credentials, session cookies, payment gateway secrets or password hashes are reproduced here. Only key names, code locations and observed behaviour flags are reported."
+  },
+  "tooling": {
+    "route_list_dev_tree": {
+      "command": "docker run --rm -v \"$PWD\":/app -w /app webdevops/php:8.3 php artisan route:list --json",
+      "exit_code": 0,
+      "routes": 142,
+      "ignition_routes": 3,
+      "note": "Working tree vendor/ contains dev dependencies, so spatie/laravel-ignition registers 3 routes (see risk RA-6)."
+    },
+    "route_list_shipped_image": {
+      "command": "docker run --rm dujiaoka:2.1.0-php83 php artisan route:list --json",
+      "exit_code": 0,
+      "routes": 139,
+      "ignition_routes": 0,
+      "admin_routes": 95
+    },
+    "cross_validation": {
+      "method": "Independent manual parse of routes/web.php, routes/common/*.php, routes/api.php, routes/channels.php, routes/console.php, app/Admin/routes.php compared with the artisan dump; then PHP reflection over every route action to obtain declaring file + start line (ReflectionMethod).",
+      "route_statements_in_project_files": 43,
+      "routes_resolved_total": 142,
+      "discrepancies": [
+        "routes/web.php:17-23 only globs routes/common/*.php; routes/api.php, routes/channels.php and routes/console.php are NOT required from there. api.php is loaded separately by app/Providers/RouteServiceProvider.php:73-79 (prefix api, middleware api).",
+        "channels.php and console.php register no HTTP routes (Broadcast::channel + Artisan::command only), which is why they do not appear in route:list.",
+        "All 139 production routes originate from 43 project route statements: 13 storefront (routes/common/web.php:14-41), 29 pay (routes/common/pay.php:11-49), 1 api (routes/api.php:16) plus 95 admin routes produced by expansion: Admin::routes() (vendor/dcat/laravel-admin/src/Admin.php:573-607) registers the auth resources/login/logout/setting (34) and registerHelperRoutes() the 8 dcat-api endpoints, while app/Admin/routes.php:14-24 adds 53 routes (7 Route::resource x 7 actions = 49 plus 4 single routes). 34+8+53 = 95, matching route:list."
+      ],
+      "controller_method_verification": "PHP ReflectionMethod resolved file+line for all 142 actions; 0 unresolved actions (all CRUD actions on App\\Admin\\* controllers are inherited from vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php:72,88,104,144,...)."
+    }
+  },
+  "auth_architecture": {
+    "guards": [
+      {
+        "name": "web",
+        "driver": "session",
+        "provider": "users -> App\\User",
+        "evidence": "config/auth.php:38-43",
+        "usage": "default guard; no end-user login/registration routes exist in this app (only admin panel login), so the web guard is effectively unused for HTTP auth decisions."
+      },
+      {
+        "name": "api",
+        "driver": "token",
+        "provider": "users -> App\\User",
+        "evidence": "config/auth.php:44-48",
+        "usage": "only on GET /api/user; expects an api_token column that the shipped schema does not create (database/sql/install.sql has no users table)."
+      },
+      {
+        "name": "admin",
+        "driver": "session",
+        "provider": "admin -> Dcat\\Admin\\Models\\Administrator",
+        "evidence": "config/admin.php:135-149",
+        "usage": "all 95 admin-prefixed routes."
+      }
+    ],
+    "middleware_groups": {
+      "web": {
+        "evidence": "app/Http/Kernel.php:34-43",
+        "stack": [
+          "App\\Http\\Middleware\\EncryptCookies",
+          "AddQueuedCookiesToResponse",
+          "StartSession",
+          "ShareErrorsFromSession",
+          "App\\Http\\Middleware\\VerifyCsrfToken",
+          "SubstituteBindings",
+          "App\\Http\\Middleware\\SecurityHeaders"
+        ],
+        "note": "AuthenticateSession is commented out (app/Http/Kernel.php:39)."
+      },
+      "api": {
+        "evidence": "app/Http/Kernel.php:45-48",
+        "stack": [
+          "throttle:60,1",
+          "SubstituteBindings"
+        ]
+      },
+      "admin": {
+        "evidence": "vendor/dcat/laravel-admin/src/AdminServiceProvider.php:78-88",
+        "stack": [
+          "admin.auth",
+          "admin.pjax",
+          "admin.bootstrap",
+          "admin.permission",
+          "admin.session",
+          "admin.upload"
+        ],
+        "note": "Aliases are registered at vendor/dcat/laravel-admin/src/AdminServiceProvider.php:66-74; dcat wraps every admin route in admin.app:admin (vendor/dcat/laravel-admin/src/Application.php:153-158) which only switches context."
+      }
+    },
+    "global_middleware": {
+      "evidence": "app/Http/Kernel.php:21-29",
+      "stack": [
+        "TrustProxies",
+        "PreventRequestsDuringMaintenance",
+        "ValidatePostSize",
+        "App\\Http\\Middleware\\TrimStrings",
+        "ConvertEmptyStringsToNull",
+        "App\\Http\\Middleware\\DujiaoSystem"
+      ],
+      "note": "DujiaoSystem only forces admin.https when the request is HTTPS (app/Http/Middleware/DujiaoSystem.php:17-29)."
+    },
+    "aliases": {
+      "evidence": "app/Http/Kernel.php:58-73",
+      "custom": {
+        "dujiaoka.boot": "App\\Http\\Middleware\\DujiaoBoot",
+        "dujiaoka.pay_gate_way": "App\\Http\\Middleware\\PayGateWay",
+        "install.check": "App\\Http\\Middleware\\InstallCheck",
+        "admin.force-password": "App\\Http\\Middleware\\ForceAdminPasswordChange",
+        "admin.auth": "Dcat\\Admin\\Http\\Middleware\\Authenticate (vendor)",
+        "admin.permission": "Dcat\\Admin\\Http\\Middleware\\Permission (vendor)"
+      }
+    },
+    "admin_guard_detail": {
+      "guard_used": "Admin::guard() = Auth::guard(config('admin.auth.guard') ?: 'admin') (vendor/dcat/laravel-admin/src/Admin.php:153)",
+      "unauthenticated_behaviour": "redirect to admin/auth/login with 401 (vendor/dcat/laravel-admin/src/Http/Middleware/Authenticate.php:24-32)",
+      "auth_passthrough": "config('admin.auth.except') = ['auth/login','auth/logout'] (config/admin.php:156-159) -> the only two admin paths reachable without a session",
+      "permission_model": "config('admin.permission.enable') = true (config/admin.php:214-226); Permission middleware lets administrators and the except list ('/','auth/login','auth/logout','auth/setting') through, otherwise requires a matching permission rule (vendor/dcat/laravel-admin/src/Http/Middleware/Permission.php:27-52)",
+      "login_rate_limit": "app/Admin/Controllers/AuthController.php:17-26 -> RateLimiter 5 attempts / 60s keyed by lower(username)|ip, cleared on success",
+      "forced_password_change": "app/Http/Middleware/ForceAdminPasswordChange.php:14-45 + app/Admin/Controllers/AuthController.php:29-38, 46-76: if the admin password verifies against the literal \"admin\" the session is pinned to admin/auth/setting",
+      "session_middleware": "config('admin.route.enable_session_middleware') = false (config/admin.php:76) - dcat relies on the web group's StartSession"
+    },
+    "csrf": {
+      "middleware": "App\\Http\\Middleware\\VerifyCsrfToken",
+      "in_group": "web (app/Http/Kernel.php:41)",
+      "except": [
+        "pay/*/notify_url",
+        "pay/*/return_url"
+      ],
+      "except_evidence": "app/Http/Middleware/VerifyCsrfToken.php:21-26",
+      "matching_semantics": "Laravel matches except entries with $request->is()/fullUrlIs(); 'pay/*/notify_url' matches pay/{gateway}/notify_url, same for return_url.",
+      "consequence": "Only gateway callback/return URLs are CSRF-exempt. GET-based callbacks (pay/yipay/notify_url routes/common/pay.php:28, pay/vpay/notify_url routes/common/pay.php:32) are state changing but CSRF is not applicable to GET - their only gate is the gateway signature.",
+      "non_exempt_state_changing_web_routes": [
+        "POST /create-order",
+        "POST /do-install",
+        "POST /search-order-by-sn",
+        "POST /search-order-by-email",
+        "POST /search-order-by-browser",
+        "POST/PUT/PATCH/DELETE /admin/* (all 51 admin mutating routes)"
+      ]
+    },
+    "install_gate": {
+      "middleware": "App\\Http\\Middleware\\InstallCheck",
+      "evidence": "app/Http/Middleware/InstallCheck.php:17-23",
+      "behaviour": "redirect to / when base_path()/install.lock exists, otherwise pass through",
+      "inverse_gate": "DujiaoBoot redirects front routes to /install while install.lock is absent (app/Http/Middleware/DujiaoBoot.php:19-23)",
+      "current_tree_state": "install.lock is NOT present in the repository working tree (ls install.lock -> no such file), so /install and /do-install are reachable in this checkout; the shipped image creates the lock at container start unless INSTALL=true (Dockerfile:12-16)."
+    }
+  },
+  "route_inventory": {
+    "counts": {
+      "total": 142,
+      "admin": 95,
+      "anonymous": 46,
+      "authenticated": 1,
+      "storefront_and_pay": 47,
+      "state_changing_anonymous": 16,
+      "upload_endpoints": 3,
+      "csrf_exempt_routes": 6
+    },
+    "non_admin_routes": [
+      {
+        "id": "route_001",
+        "path": "/",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Home\\HomeController@index",
+        "file": "app/Http/Controllers/Home/HomeController.php",
+        "line": 47,
+        "middleware": [
+          "web",
+          "dujiaoka.boot"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock must exist, otherwise dujiaoka.boot redirects to /install (app/Http/Middleware/DujiaoBoot.php:19-23)"
+        ],
+        "notes": "Storefront home page; renders goods list (app/Http/Controllers/Home/HomeController.php:47-51).",
+        "route_group": "storefront",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_002",
+        "path": "/_ignition/execute-solution",
+        "method": "POST",
+        "controller": "Spatie\\LaravelIgnition\\Http\\Controllers\\ExecuteSolutionController",
+        "file": null,
+        "line": null,
+        "middleware": [
+          "Spatie\\LaravelIgnition\\Http\\Middleware\\RunnableSolutionsEnabled"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_POST:*"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "spatie/laravel-ignition installed (dev requirements)",
+          "APP_DEBUG=true and local environment (RunnableSolutionsGuard)"
+        ],
+        "notes": "Spatie Ignition solution executor (dev-only dependency); not present in the shipped production image (route:list inside dujiaoka:2.1.0-php83 returns 139 routes, 0 _ignition).",
+        "route_group": "framework/vendor",
+        "csrf": "not in web group (api group: throttle:60,1 only)",
+        "hidden": true,
+        "discovery_source": "artisan route:list (dev dependency route), absent from the shipped production image route table",
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_003",
+        "path": "/_ignition/health-check",
+        "method": "GET",
+        "controller": "Spatie\\LaravelIgnition\\Http\\Controllers\\HealthCheckController",
+        "file": null,
+        "line": null,
+        "middleware": [
+          "Spatie\\LaravelIgnition\\Http\\Middleware\\RunnableSolutionsEnabled"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [],
+        "state_changing": false,
+        "auth_preconditions": [
+          "spatie/laravel-ignition installed (dev requirements)",
+          "APP_DEBUG=true and local environment (RunnableSolutionsGuard)"
+        ],
+        "notes": "Spatie Ignition health probe; not present in the shipped production image (route:list inside dujiaoka:2.1.0-php83 returns 139 routes, 0 _ignition).",
+        "route_group": "framework/vendor",
+        "csrf": "not in web group (api group: throttle:60,1 only)",
+        "hidden": true,
+        "discovery_source": "artisan route:list (dev dependency route), absent from the shipped production image route table",
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_004",
+        "path": "/_ignition/update-config",
+        "method": "POST",
+        "controller": "Spatie\\LaravelIgnition\\Http\\Controllers\\UpdateConfigController",
+        "file": null,
+        "line": null,
+        "middleware": [
+          "Spatie\\LaravelIgnition\\Http\\Middleware\\RunnableSolutionsEnabled"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_POST:*"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "spatie/laravel-ignition installed (dev requirements)",
+          "APP_DEBUG=true and local environment (RunnableSolutionsGuard)"
+        ],
+        "notes": "Spatie Ignition config writer; not present in the shipped production image (route:list inside dujiaoka:2.1.0-php83 returns 139 routes, 0 _ignition).",
+        "route_group": "framework/vendor",
+        "csrf": "not in web group (api group: throttle:60,1 only)",
+        "hidden": true,
+        "discovery_source": "artisan route:list (dev dependency route), absent from the shipped production image route table",
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_005",
+        "path": "/api/user",
+        "method": "GET",
+        "controller": "Closure",
+        "file": null,
+        "line": null,
+        "middleware": [
+          "api",
+          "auth:api"
+        ],
+        "auth_level": "authenticated",
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "auth:api token guard (config/auth.php:44-48)",
+          "a `users` table with api_token column"
+        ],
+        "notes": "Closure route returning $request->user(). The installed schema (database/sql/install.sql) has no `users` table and no api_token column, so this route resolves the token guard against a non-existent table -> dead/broken surface, not an auth bypass. Marked [Needs Verification] because no DB was queried in static mode.",
+        "route_group": "framework/vendor",
+        "csrf": "not in web group (api group: throttle:60,1 only)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_006",
+        "path": "/bill/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Home\\OrderController@bill",
+        "file": "app/Http/Controllers/Home/OrderController.php",
+        "line": 121,
+        "middleware": [
+          "web",
+          "dujiaoka.boot"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:orderSN"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "knowledge of a valid order_sn"
+        ],
+        "notes": "Order checkout page (OrderController.php:121-131). No ownership/password check - see risk RA-4.",
+        "route_group": "storefront",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_007",
+        "path": "/buy/{id}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Home\\HomeController@buy",
+        "file": "app/Http/Controllers/Home/HomeController.php",
+        "line": 63,
+        "middleware": [
+          "web",
+          "dujiaoka.boot"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:id"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present"
+        ],
+        "notes": "Goods detail; id is type-hinted int in HomeController::buy(int $id) (HomeController.php:63).",
+        "route_group": "storefront",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_008",
+        "path": "/captcha/api/{config?}",
+        "method": "GET",
+        "controller": "\\Mews\\Captcha\\CaptchaController@getCaptchaApi",
+        "file": "vendor/mews/captcha/src/CaptchaController.php",
+        "line": 39,
+        "middleware": [
+          "web"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:config"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "none"
+        ],
+        "notes": "mews/captcha base64 API endpoint.",
+        "route_group": "framework/vendor",
+        "csrf": "not applicable (GET)",
+        "hidden": true,
+        "discovery_source": "not declared in routes/*.php; registered by package service providers and returned by artisan route:list",
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_009",
+        "path": "/captcha/{config?}",
+        "method": "GET",
+        "controller": "\\Mews\\Captcha\\CaptchaController@getCaptcha",
+        "file": "vendor/mews/captcha/src/CaptchaController.php",
+        "line": 22,
+        "middleware": [
+          "web"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:config"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "none (outside install.check/dujiaoka.boot)"
+        ],
+        "notes": "mews/captcha image endpoint (vendor/mews/captcha), provided by package service provider; session-backed.",
+        "route_group": "framework/vendor",
+        "csrf": "not applicable (GET)",
+        "hidden": true,
+        "discovery_source": "not declared in routes/*.php; registered by package service providers and returned by artisan route:list",
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_010",
+        "path": "/check-geetest",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Home\\HomeController@geetest",
+        "file": "app/Http/Controllers/Home/HomeController.php",
+        "line": 95,
+        "middleware": [
+          "web",
+          "dujiaoka.boot"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present"
+        ],
+        "notes": "Geetest handshake; writes session keys gtserver/user_id (HomeController.php:95-106). Uses client IP from Request::ip().",
+        "route_group": "storefront",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_011",
+        "path": "/check-order-status/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Home\\OrderController@checkOrderStatus",
+        "file": "app/Http/Controllers/Home/OrderController.php",
+        "line": 144,
+        "middleware": [
+          "web",
+          "dujiaoka.boot"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:orderSN"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "order_sn"
+        ],
+        "notes": "Returns JSON order status only (OrderController.php:144-159).",
+        "route_group": "storefront",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_012",
+        "path": "/create-order",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Home\\OrderController@createOrder",
+        "file": "app/Http/Controllers/Home/OrderController.php",
+        "line": 57,
+        "middleware": [
+          "web",
+          "dujiaoka.boot"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_POST:gid",
+          "$_POST:email",
+          "$_POST:payway",
+          "$_POST:search_pwd",
+          "$_POST:by_amount",
+          "$_POST:img_verify_code",
+          "$_POST:geetest_challenge",
+          "$_POST:<dynamic other_ipu_cnf fields>"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "CSRF token (web group)",
+          "captcha only if is_open_img_code=1 (app/Rules/VerifyImg.php:29, default CLOSE app/Admin/Forms/SystemSetting.php:49-50)",
+          "geetest check is effectively disabled - see risk RA-3"
+        ],
+        "notes": "Creates an order row and queues cookie dujiaoka_orders (OrderController.php:57-92, 98-109). No throttle middleware on this route (app/Http/Kernel.php:34-43).",
+        "route_group": "storefront",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_013",
+        "path": "/detail-order-sn/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Home\\OrderController@detailOrderSN",
+        "file": "app/Http/Controllers/Home/OrderController.php",
+        "line": 171,
+        "middleware": [
+          "web",
+          "dujiaoka.boot"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:orderSN"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "knowledge of a valid order_sn"
+        ],
+        "notes": "Renders static_pages/orderinfo incl. delivered card secret $order['info'] (resources/views/hyper/static_pages/orderinfo.blade.php:97). No ownership check: OrderService::detailOrderSN() is a plain where('order_sn') lookup (app/Service/OrderService.php:212-216).",
+        "route_group": "storefront",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_014",
+        "path": "/do-install",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Home\\HomeController@doInstall",
+        "file": "app/Http/Controllers/Home/HomeController.php",
+        "line": 132,
+        "middleware": [
+          "web",
+          "install.check"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_POST:admin_username",
+          "$_POST:admin_password",
+          "$_POST:db_host",
+          "$_POST:db_port",
+          "$_POST:db_database",
+          "$_POST:db_username",
+          "$_POST:db_password",
+          "$_POST:redis_host",
+          "$_POST:redis_port",
+          "$_POST:redis_password",
+          "$_POST:title",
+          "$_POST:app_url",
+          "$_POST:admin_path"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock must NOT exist",
+          "CSRF token (web group)"
+        ],
+        "notes": "Unauthenticated: writes .env from .env.example template, runs database/sql/install.sql via DB::unprepared, sets admin_users id=1 credentials and creates install.lock (HomeController.php:132-228, sinks at :202, :204, :206-211, :216).",
+        "route_group": "install",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_015",
+        "path": "/geetest",
+        "method": "GET",
+        "controller": "App\\Service\\Geetest\\GeetestController@getGeetest",
+        "file": "app/Service/Geetest/GeetestCaptcha.php",
+        "line": 12,
+        "middleware": [
+          "web"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [],
+        "state_changing": false,
+        "auth_preconditions": [
+          "none"
+        ],
+        "notes": "App\\Service\\Geetest\\GeetestController::getGeetest is provided by trait App\\Service\\Geetest\\GeetestCaptcha (no explicit method in the class file).",
+        "route_group": "framework/vendor",
+        "csrf": "not applicable (GET)",
+        "hidden": true,
+        "discovery_source": "not declared in routes/*.php; registered by package service providers and returned by artisan route:list",
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_016",
+        "path": "/install",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Home\\HomeController@install",
+        "file": "app/Http/Controllers/Home/HomeController.php",
+        "line": 118,
+        "middleware": [
+          "web",
+          "install.check"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock must NOT exist (app/Http/Middleware/InstallCheck.php:17-23)"
+        ],
+        "notes": "Install wizard page (HomeController.php:118-121).",
+        "route_group": "install",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_017",
+        "path": "/order-search",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Home\\OrderController@orderSearch",
+        "file": "app/Http/Controllers/Home/OrderController.php",
+        "line": 254,
+        "middleware": [
+          "web",
+          "dujiaoka.boot"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present"
+        ],
+        "notes": "Static search form (OrderController.php:254-257).",
+        "route_group": "storefront",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_018",
+        "path": "/pay-gateway/{handle}/{payway}/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\PayController@redirectGatewayLegacy",
+        "file": "app/Http/Controllers/PayController.php",
+        "line": 208,
+        "middleware": [
+          "web"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:handle",
+          "route_param:payway",
+          "route_param:orderSN"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn"
+        ],
+        "notes": "Legacy alias; $handle ignored (PayController.php:208-211).",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_019",
+        "path": "/pay-gateway/{payway}/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\PayController@redirectGateway",
+        "file": "app/Http/Controllers/PayController.php",
+        "line": 180,
+        "middleware": [
+          "web"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:payway",
+          "route_param:orderSN"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn whose pay_id matches the payway check"
+        ],
+        "notes": "Redirects to the gateway handler route; if order actual_price == 0 the order is auto-completed (PayController.php:188-197) - zero-amount auto-fulfilment is reachable anonymously.",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_020",
+        "path": "/pay/coinbase/notify_url",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Pay\\CoinbaseController@notifyUrl",
+        "file": "app/Http/Controllers/Pay/CoinbaseController.php",
+        "line": 81,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_POST:*"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "callback signature computed with the gateway secret stored in pays.merchant_pem / merchant_id (signature verified in controller)"
+        ],
+        "notes": "HMAC-SHA256 webhook signature with merchant_pem (CoinbaseController.php:81-154, hash_hmac at :108)",
+        "route_group": "pay",
+        "csrf": "exempt (app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_021",
+        "path": "/pay/coinbase/{payway}/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\CoinbaseController@gateway",
+        "file": "app/Http/Controllers/Pay/CoinbaseController.php",
+        "line": 11,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:payway",
+          "route_param:orderSN"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn",
+          "pays.pay_handleroute matches this gateway",
+          "order not expired/paid"
+        ],
+        "notes": "order/pay gateway precondition",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_022",
+        "path": "/pay/epusdt/notify_url",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Pay\\EpusdtController@notifyUrl",
+        "file": "app/Http/Controllers/Pay/EpusdtController.php",
+        "line": 71,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_POST:*"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "callback signature computed with the gateway secret stored in pays.merchant_pem / merchant_id (signature verified in controller)"
+        ],
+        "notes": "epusdtSign() + hash_equals (EpusdtController.php:71-97, compare at :89)",
+        "route_group": "pay",
+        "csrf": "exempt (app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_023",
+        "path": "/pay/epusdt/return_url",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\EpusdtController@returnUrl",
+        "file": "app/Http/Controllers/Pay/EpusdtController.php",
+        "line": 99,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_GET:*"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "order_sn known to the browser redirect"
+        ],
+        "notes": "no signature; redirect only",
+        "route_group": "pay",
+        "csrf": "not applicable (GET; path also matches the except list app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_024",
+        "path": "/pay/epusdt/{payway}/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\EpusdtController@gateway",
+        "file": "app/Http/Controllers/Pay/EpusdtController.php",
+        "line": 21,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:payway",
+          "route_param:orderSN"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn",
+          "pays.pay_handleroute matches this gateway",
+          "order not expired/paid"
+        ],
+        "notes": "order/pay gateway precondition",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_025",
+        "path": "/pay/mapay/notify_url",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Pay\\MapayController@notifyUrl",
+        "file": "app/Http/Controllers/Pay/MapayController.php",
+        "line": 54,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_POST:*"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "callback signature computed with the gateway secret stored in pays.merchant_pem / merchant_id (signature verified in controller)"
+        ],
+        "notes": "md5 signature with merchant_pem, secureCompare (MapayController.php:54-...)",
+        "route_group": "pay",
+        "csrf": "exempt (app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_026",
+        "path": "/pay/mapay/{payway}/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\MapayController@gateway",
+        "file": "app/Http/Controllers/Pay/MapayController.php",
+        "line": 12,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:payway",
+          "route_param:orderSN"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn",
+          "pays.pay_handleroute matches this gateway",
+          "order not expired/paid"
+        ],
+        "notes": "POST-less GET handler build; loadGateWay() requires order + matching pay gateway (PayController.php:89-107)",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_027",
+        "path": "/pay/payjs/notify_url",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Pay\\PayjsController@notifyUrl",
+        "file": "app/Http/Controllers/Pay/PayjsController.php",
+        "line": 49,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_POST:*"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "callback signature computed with the gateway secret stored in pays.merchant_pem / merchant_id (signature verified in controller)"
+        ],
+        "notes": "delegates signature verification to Xhat\\Payjs SDK Payjs::notify() [Needs Verification: SDK internals not read]",
+        "route_group": "pay",
+        "csrf": "exempt (app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_028",
+        "path": "/pay/payjs/{payway}/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\PayjsController@gateway",
+        "file": "app/Http/Controllers/Pay/PayjsController.php",
+        "line": 13,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:payway",
+          "route_param:orderSN"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn",
+          "pays.pay_handleroute matches this gateway",
+          "order not expired/paid"
+        ],
+        "notes": "order/pay gateway precondition + outbound Payjs API call",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_029",
+        "path": "/pay/paysapi/notify_url",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Pay\\PaysapiController@notifyUrl",
+        "file": "app/Http/Controllers/Pay/PaysapiController.php",
+        "line": 81,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_POST:*"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "callback signature computed with the gateway secret stored in pays.merchant_pem / merchant_id (signature verified in controller)"
+        ],
+        "notes": "md5(orderid+orderuid+paysapi_id+price+realprice+merchant_pem) compared with hash_equals; also requires orderuid == order->email",
+        "route_group": "pay",
+        "csrf": "exempt (app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_030",
+        "path": "/pay/paysapi/return_url",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\PaysapiController@returnUrl",
+        "file": "app/Http/Controllers/Pay/PaysapiController.php",
+        "line": 112,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_GET:*"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "order_sn known to the browser redirect"
+        ],
+        "notes": "no signature; redirect helper only",
+        "route_group": "pay",
+        "csrf": "not applicable (GET; path also matches the except list app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_031",
+        "path": "/pay/paysapi/{payway}/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\PaysapiController@gateway",
+        "file": "app/Http/Controllers/Pay/PaysapiController.php",
+        "line": 14,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:payway",
+          "route_param:orderSN"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn",
+          "pays.pay_handleroute matches this gateway",
+          "order not expired/paid"
+        ],
+        "notes": "order/pay gateway precondition",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_032",
+        "path": "/pay/stripe/charge",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\StripeController@charge",
+        "file": "app/Http/Controllers/Pay/StripeController.php",
+        "line": 524,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_GET:orderid",
+          "$_GET:stripeToken",
+          "$_GET:context"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn",
+          "attacker-supplied Stripe token accepted as charge source (StripeController.php:544)",
+          "context HMAC validated ONLY when filled (StripeController.php:536)"
+        ],
+        "notes": "Charge::create with req stripeToken (StripeController.php:544-553); on exception the raw exception message is returned to the client (StripeController.php:555) - error/info disclosure.",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_033",
+        "path": "/pay/stripe/check",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\StripeController@check",
+        "file": "app/Http/Controllers/Pay/StripeController.php",
+        "line": 473,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_GET:orderid",
+          "$_GET:source",
+          "$_GET:context",
+          "$_GET:stripe_usd_amount"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn",
+          "Stripe source status/currency/amount match (StripeController.php:495-507)",
+          "context HMAC validated ONLY when filled (StripeController.php:490)"
+        ],
+        "notes": "Charge::create against the merchant account at StripeController.php:509.",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_034",
+        "path": "/pay/stripe/return_url",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\StripeController@returnUrl",
+        "file": "app/Http/Controllers/Pay/StripeController.php",
+        "line": 434,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_GET:orderid",
+          "$_GET:source",
+          "$_GET:context"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn whose pay_id is a Stripe gateway",
+          "Stripe Source object status=chargeable, currency=cny, amount == order amount and owner name == order_sn (StripeController.php:454-459)",
+          "context HMAC validated ONLY when the parameter is present (StripeController.php:449)"
+        ],
+        "notes": "Performs Stripe Source::retrieve + Charge::create at StripeController.php:461 then completedOrder(); reachable with GET and no session.",
+        "route_group": "pay",
+        "csrf": "not applicable (GET; path also matches the except list app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_035",
+        "path": "/pay/stripe/{payway}/{oid}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\StripeController@gateway",
+        "file": "app/Http/Controllers/Pay/StripeController.php",
+        "line": 15,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:payway",
+          "route_param:orderSN"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn",
+          "pays.pay_handleroute matches this gateway",
+          "order not expired/paid"
+        ],
+        "notes": "order/pay gateway precondition; leaks merchant publishable key + HMAC context token into HTML",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_036",
+        "path": "/pay/tokenpay/notify_url",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Pay\\TokenPayController@notifyUrl",
+        "file": "app/Http/Controllers/Pay/TokenPayController.php",
+        "line": 71,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_POST:*"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "callback signature computed with the gateway secret stored in pays.merchant_pem / merchant_id (signature verified in controller)"
+        ],
+        "notes": "VerifySign() + hash_equals (TokenPayController.php:71-98, compare at :90)",
+        "route_group": "pay",
+        "csrf": "exempt (app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_037",
+        "path": "/pay/tokenpay/return_url",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\TokenPayController@returnUrl",
+        "file": "app/Http/Controllers/Pay/TokenPayController.php",
+        "line": 100,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_GET:*"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "order_sn known to the browser redirect"
+        ],
+        "notes": "no signature; redirect only",
+        "route_group": "pay",
+        "csrf": "not applicable (GET; path also matches the except list app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_038",
+        "path": "/pay/tokenpay/{payway}/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\TokenPayController@gateway",
+        "file": "app/Http/Controllers/Pay/TokenPayController.php",
+        "line": 21,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:payway",
+          "route_param:orderSN"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn",
+          "pays.pay_handleroute matches this gateway",
+          "order not expired/paid"
+        ],
+        "notes": "order/pay gateway precondition",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_039",
+        "path": "/pay/vpay/notify_url",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\VpayController@notifyUrl",
+        "file": "app/Http/Controllers/Pay/VpayController.php",
+        "line": 52,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_GET:*"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "callback signature computed with the gateway secret stored in pays.merchant_pem / merchant_id (signature verified in controller)"
+        ],
+        "notes": "GET callback; md5(payId+param+type+price+reallyPrice+merchant_id) + hash_equals (VpayController.php:52-87, compare at :80)",
+        "route_group": "pay",
+        "csrf": "not applicable (GET; path also matches the except list app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_040",
+        "path": "/pay/vpay/return_url",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\VpayController@returnUrl",
+        "file": "app/Http/Controllers/Pay/VpayController.php",
+        "line": 89,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_GET:*"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "order_sn known to the browser redirect"
+        ],
+        "notes": "no signature; redirect only",
+        "route_group": "pay",
+        "csrf": "not applicable (GET; path also matches the except list app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_041",
+        "path": "/pay/vpay/{payway}/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\VpayController@gateway",
+        "file": "app/Http/Controllers/Pay/VpayController.php",
+        "line": 19,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:payway",
+          "route_param:orderSN"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn",
+          "pays.pay_handleroute matches this gateway",
+          "order not expired/paid"
+        ],
+        "notes": "order/pay gateway precondition",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_042",
+        "path": "/pay/yipay/notify_url",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\YipayController@notifyUrl",
+        "file": "app/Http/Controllers/Pay/YipayController.php",
+        "line": 59,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_GET:*"
+        ],
+        "state_changing": true,
+        "auth_preconditions": [
+          "install.lock present",
+          "callback signature computed with the gateway secret stored in pays.merchant_pem / merchant_id (signature verified in controller)"
+        ],
+        "notes": "GET callback; md5(sorted params + merchant_pem) compared with hash_equals at YipayController.php:94 (function :59-111); route is GET so CSRF is not applicable",
+        "route_group": "pay",
+        "csrf": "not applicable (GET; path also matches the except list app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_043",
+        "path": "/pay/yipay/return_url",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\YipayController@returnUrl",
+        "file": "app/Http/Controllers/Pay/YipayController.php",
+        "line": 113,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_GET:*"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "order_sn known to the browser redirect"
+        ],
+        "notes": "no signature; sleep(2) then redirect to detail-order-sn with attacker-supplied order_id (YipayController.php:113-119)",
+        "route_group": "pay",
+        "csrf": "not applicable (GET; path also matches the except list app/Http/Middleware/VerifyCsrfToken.php:24-25)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_044",
+        "path": "/pay/yipay/{payway}/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\YipayController@gateway",
+        "file": "app/Http/Controllers/Pay/YipayController.php",
+        "line": 11,
+        "middleware": [
+          "web",
+          "dujiaoka.pay_gate_way"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "route_param:payway",
+          "route_param:orderSN"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "valid order_sn",
+          "pays.pay_handleroute matches this gateway",
+          "order not expired/paid"
+        ],
+        "notes": "builds signed form and returns raw HTML; loadGateWay() precondition",
+        "route_group": "pay",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_045",
+        "path": "/search-order-by-browser",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Home\\OrderController@searchOrderByBrowser",
+        "file": "app/Http/Controllers/Home/OrderController.php",
+        "line": 233,
+        "middleware": [
+          "web",
+          "dujiaoka.boot"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "cookie:dujiaoka_orders"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "CSRF token",
+          "attacker-controlled dujiaoka_orders cookie"
+        ],
+        "notes": "Order list comes from the cookie value json_decode()d and fed into whereIn(order_sn) (OrderController.php:233-242, OrderService.php:281-288) -> cookie-driven IDOR primitive (encrypted+MACed by EncryptCookies).",
+        "route_group": "storefront",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_046",
+        "path": "/search-order-by-email",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Home\\OrderController@searchOrderByEmail",
+        "file": "app/Http/Controllers/Home/OrderController.php",
+        "line": 206,
+        "middleware": [
+          "web",
+          "dujiaoka.boot"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_POST:email",
+          "$_POST:search_pwd"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "CSRF token",
+          "attacker knows a victim e-mail",
+          "search_pwd only enforced when is_open_search_pwd=1 (default CLOSE, OrderController.php:208-216)"
+        ],
+        "notes": "Returns up to 5 orders for e-mail incl. delivered cards (app/Service/OrderService.php:259-269, orderinfo view:97). No captcha/throttle on this route.",
+        "route_group": "storefront",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_047",
+        "path": "/search-order-by-sn",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Home\\OrderController@searchOrderBySN",
+        "file": "app/Http/Controllers/Home/OrderController.php",
+        "line": 191,
+        "middleware": [
+          "web",
+          "dujiaoka.boot"
+        ],
+        "auth_level": "anonymous",
+        "input_sources": [
+          "$_POST:order_sn"
+        ],
+        "state_changing": false,
+        "auth_preconditions": [
+          "install.lock present",
+          "CSRF token",
+          "order_sn"
+        ],
+        "notes": "Delegates straight to detailOrderSN() -> no authz, no captcha, no throttle (OrderController.php:191-194).",
+        "route_group": "storefront",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      }
+    ],
+    "admin_routes": [
+      {
+        "id": "route_048",
+        "path": "/admin",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\HomeController@index",
+        "file": "app/Admin/Controllers/HomeController.php",
+        "line": 18,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_049",
+        "path": "/admin/auth/extensions",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\ExtensionController@index",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/ExtensionController.php",
+        "line": 20,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_050",
+        "path": "/admin/auth/extensions",
+        "method": "POST",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\ExtensionController@store",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/HasResourceActions.php",
+        "line": 23,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_051",
+        "path": "/admin/auth/extensions/{extension}",
+        "method": "PUT|PATCH",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\ExtensionController@update",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/HasResourceActions.php",
+        "line": 13,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_052",
+        "path": "/admin/auth/login",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\AuthController@getLogin",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php",
+        "line": 36,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_053",
+        "path": "/admin/auth/login",
+        "method": "POST",
+        "controller": "App\\Admin\\Controllers\\AuthController@postLogin",
+        "file": "app/Admin/Controllers/AuthController.php",
+        "line": 15,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_054",
+        "path": "/admin/auth/logout",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\AuthController@getLogout",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php",
+        "line": 80,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_055",
+        "path": "/admin/auth/menu",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\MenuController@index",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/MenuController.php",
+        "line": 22,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_056",
+        "path": "/admin/auth/menu",
+        "method": "POST",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\MenuController@store",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 144,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_057",
+        "path": "/admin/auth/menu/{menu}",
+        "method": "PUT|PATCH",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\MenuController@update",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 134,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_058",
+        "path": "/admin/auth/menu/{menu}",
+        "method": "DELETE",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\MenuController@destroy",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 155,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_059",
+        "path": "/admin/auth/menu/{menu}/edit",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\MenuController@edit",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 104,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_060",
+        "path": "/admin/auth/permissions",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\PermissionController@index",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/PermissionController.php",
+        "line": 19,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_061",
+        "path": "/admin/auth/permissions",
+        "method": "POST",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\PermissionController@store",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 144,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_062",
+        "path": "/admin/auth/permissions/create",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\PermissionController@create",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 119,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_063",
+        "path": "/admin/auth/permissions/{permission}",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\PermissionController@show",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 88,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_064",
+        "path": "/admin/auth/permissions/{permission}",
+        "method": "PUT|PATCH",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\PermissionController@update",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 134,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_065",
+        "path": "/admin/auth/permissions/{permission}",
+        "method": "DELETE",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\PermissionController@destroy",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 155,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_066",
+        "path": "/admin/auth/permissions/{permission}/edit",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\PermissionController@edit",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 104,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_067",
+        "path": "/admin/auth/roles",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\RoleController@index",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 72,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_068",
+        "path": "/admin/auth/roles",
+        "method": "POST",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\RoleController@store",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 144,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_069",
+        "path": "/admin/auth/roles/create",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\RoleController@create",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 119,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_070",
+        "path": "/admin/auth/roles/{role}",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\RoleController@show",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 88,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_071",
+        "path": "/admin/auth/roles/{role}",
+        "method": "PUT|PATCH",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\RoleController@update",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 134,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_072",
+        "path": "/admin/auth/roles/{role}",
+        "method": "DELETE",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\RoleController@destroy",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/RoleController.php",
+        "line": 145,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_073",
+        "path": "/admin/auth/roles/{role}/edit",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\RoleController@edit",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 104,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_074",
+        "path": "/admin/auth/setting",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\AuthController@getSetting",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AuthController.php",
+        "line": 100,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_075",
+        "path": "/admin/auth/setting",
+        "method": "PUT",
+        "controller": "App\\Admin\\Controllers\\AuthController@putSetting",
+        "file": "app/Admin/Controllers/AuthController.php",
+        "line": 46,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_076",
+        "path": "/admin/auth/users",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\UserController@index",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 72,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_077",
+        "path": "/admin/auth/users",
+        "method": "POST",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\UserController@store",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 144,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_078",
+        "path": "/admin/auth/users/create",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\UserController@create",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 119,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_079",
+        "path": "/admin/auth/users/{user}",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\UserController@show",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 88,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_080",
+        "path": "/admin/auth/users/{user}",
+        "method": "PUT|PATCH",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\UserController@update",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 134,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_081",
+        "path": "/admin/auth/users/{user}",
+        "method": "DELETE",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\UserController@destroy",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/UserController.php",
+        "line": 186,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_082",
+        "path": "/admin/auth/users/{user}/edit",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\UserController@edit",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 104,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_083",
+        "path": "/admin/carmis",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\CarmisController@index",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 72,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_084",
+        "path": "/admin/carmis",
+        "method": "POST",
+        "controller": "App\\Admin\\Controllers\\CarmisController@store",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 144,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_085",
+        "path": "/admin/carmis/create",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\CarmisController@create",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 119,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_086",
+        "path": "/admin/carmis/{carmi}",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\CarmisController@show",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 88,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_087",
+        "path": "/admin/carmis/{carmi}",
+        "method": "PUT|PATCH",
+        "controller": "App\\Admin\\Controllers\\CarmisController@update",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 134,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_088",
+        "path": "/admin/carmis/{carmi}",
+        "method": "DELETE",
+        "controller": "App\\Admin\\Controllers\\CarmisController@destroy",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 155,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_089",
+        "path": "/admin/carmis/{carmi}/edit",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\CarmisController@edit",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 104,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_090",
+        "path": "/admin/coupon",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\CouponController@index",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 72,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_091",
+        "path": "/admin/coupon",
+        "method": "POST",
+        "controller": "App\\Admin\\Controllers\\CouponController@store",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 144,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_092",
+        "path": "/admin/coupon/create",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\CouponController@create",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 119,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_093",
+        "path": "/admin/coupon/{coupon}",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\CouponController@show",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 88,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_094",
+        "path": "/admin/coupon/{coupon}",
+        "method": "PUT|PATCH",
+        "controller": "App\\Admin\\Controllers\\CouponController@update",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 134,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_095",
+        "path": "/admin/coupon/{coupon}",
+        "method": "DELETE",
+        "controller": "App\\Admin\\Controllers\\CouponController@destroy",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 155,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_096",
+        "path": "/admin/coupon/{coupon}/edit",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\CouponController@edit",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 104,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_097",
+        "path": "/admin/dcat-api/action",
+        "method": "POST",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\HandleActionController@handle",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleActionController.php",
+        "line": 16,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_098",
+        "path": "/admin/dcat-api/editor-md/upload",
+        "method": "POST",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\EditorMDController@upload",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/EditorMDController.php",
+        "line": 12,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_099",
+        "path": "/admin/dcat-api/form",
+        "method": "POST",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\HandleFormController@handle",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php",
+        "line": 18,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_100",
+        "path": "/admin/dcat-api/form/destroy-file",
+        "method": "POST",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\HandleFormController@destroyFile",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php",
+        "line": 75,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_101",
+        "path": "/admin/dcat-api/form/upload",
+        "method": "POST",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\HandleFormController@uploadFile",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php",
+        "line": 37,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_102",
+        "path": "/admin/dcat-api/render",
+        "method": "GET",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\RenderableController@handle",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/RenderableController.php",
+        "line": 12,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_103",
+        "path": "/admin/dcat-api/tinymce/upload",
+        "method": "POST",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\TinymceController@upload",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/TinymceController.php",
+        "line": 12,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_104",
+        "path": "/admin/dcat-api/value",
+        "method": "POST",
+        "controller": "Dcat\\Admin\\Http\\Controllers\\ValueController@handle",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/ValueController.php",
+        "line": 14,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_105",
+        "path": "/admin/email-test",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\EmailTestController@emailTest",
+        "file": "app/Admin/Controllers/EmailTestController.php",
+        "line": 31,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_106",
+        "path": "/admin/emailtpl",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\EmailtplController@index",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 72,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_107",
+        "path": "/admin/emailtpl",
+        "method": "POST",
+        "controller": "App\\Admin\\Controllers\\EmailtplController@store",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 144,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_108",
+        "path": "/admin/emailtpl/create",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\EmailtplController@create",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 119,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_109",
+        "path": "/admin/emailtpl/{emailtpl}",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\EmailtplController@show",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 88,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_110",
+        "path": "/admin/emailtpl/{emailtpl}",
+        "method": "PUT|PATCH",
+        "controller": "App\\Admin\\Controllers\\EmailtplController@update",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 134,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_111",
+        "path": "/admin/emailtpl/{emailtpl}",
+        "method": "DELETE",
+        "controller": "App\\Admin\\Controllers\\EmailtplController@destroy",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 155,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_112",
+        "path": "/admin/emailtpl/{emailtpl}/edit",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\EmailtplController@edit",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 104,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_113",
+        "path": "/admin/goods",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\GoodsController@index",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 72,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_114",
+        "path": "/admin/goods",
+        "method": "POST",
+        "controller": "App\\Admin\\Controllers\\GoodsController@store",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 144,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_115",
+        "path": "/admin/goods-group",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\GoodsGroupController@index",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 72,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_116",
+        "path": "/admin/goods-group",
+        "method": "POST",
+        "controller": "App\\Admin\\Controllers\\GoodsGroupController@store",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 144,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_117",
+        "path": "/admin/goods-group/create",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\GoodsGroupController@create",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 119,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_118",
+        "path": "/admin/goods-group/{goods_group}",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\GoodsGroupController@show",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 88,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_119",
+        "path": "/admin/goods-group/{goods_group}",
+        "method": "PUT|PATCH",
+        "controller": "App\\Admin\\Controllers\\GoodsGroupController@update",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 134,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_120",
+        "path": "/admin/goods-group/{goods_group}",
+        "method": "DELETE",
+        "controller": "App\\Admin\\Controllers\\GoodsGroupController@destroy",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 155,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_121",
+        "path": "/admin/goods-group/{goods_group}/edit",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\GoodsGroupController@edit",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 104,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_122",
+        "path": "/admin/goods/create",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\GoodsController@create",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 119,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_123",
+        "path": "/admin/goods/{good}",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\GoodsController@show",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 88,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_124",
+        "path": "/admin/goods/{good}",
+        "method": "PUT|PATCH",
+        "controller": "App\\Admin\\Controllers\\GoodsController@update",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 134,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_125",
+        "path": "/admin/goods/{good}",
+        "method": "DELETE",
+        "controller": "App\\Admin\\Controllers\\GoodsController@destroy",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 155,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_126",
+        "path": "/admin/goods/{good}/edit",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\GoodsController@edit",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 104,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_127",
+        "path": "/admin/import-carmis",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\CarmisController@importCarmis",
+        "file": "app/Admin/Controllers/CarmisController.php",
+        "line": 118,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_128",
+        "path": "/admin/order",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\OrderController@index",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 72,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_129",
+        "path": "/admin/order",
+        "method": "POST",
+        "controller": "App\\Admin\\Controllers\\OrderController@store",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 144,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_130",
+        "path": "/admin/order/create",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\OrderController@create",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 119,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_131",
+        "path": "/admin/order/{order}",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\OrderController@show",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 88,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_132",
+        "path": "/admin/order/{order}",
+        "method": "PUT|PATCH",
+        "controller": "App\\Admin\\Controllers\\OrderController@update",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 134,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_133",
+        "path": "/admin/order/{order}",
+        "method": "DELETE",
+        "controller": "App\\Admin\\Controllers\\OrderController@destroy",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 155,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_134",
+        "path": "/admin/order/{order}/edit",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\OrderController@edit",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 104,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_135",
+        "path": "/admin/pay",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\PayController@index",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 72,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_136",
+        "path": "/admin/pay",
+        "method": "POST",
+        "controller": "App\\Admin\\Controllers\\PayController@store",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 144,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_137",
+        "path": "/admin/pay/create",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\PayController@create",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 119,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_138",
+        "path": "/admin/pay/{pay}",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\PayController@show",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 88,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_139",
+        "path": "/admin/pay/{pay}",
+        "method": "PUT|PATCH",
+        "controller": "App\\Admin\\Controllers\\PayController@update",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 134,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_140",
+        "path": "/admin/pay/{pay}",
+        "method": "DELETE",
+        "controller": "App\\Admin\\Controllers\\PayController@destroy",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 155,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": true,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "required (VerifyCsrfToken in web group, app/Http/Kernel.php:41)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_141",
+        "path": "/admin/pay/{pay}/edit",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\PayController@edit",
+        "file": "vendor/dcat/laravel-admin/src/Http/Controllers/AdminController.php",
+        "line": 104,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      },
+      {
+        "id": "route_142",
+        "path": "/admin/system-setting",
+        "method": "GET",
+        "controller": "App\\Admin\\Controllers\\SystemSettingController@systemSetting",
+        "file": "app/Admin/Controllers/SystemSettingController.php",
+        "line": 31,
+        "middleware": [
+          "admin.app:admin",
+          "web",
+          "admin",
+          "admin.force-password"
+        ],
+        "auth_level": "admin",
+        "auth_preconditions": [
+          "valid dcat/laravel-admin session on guard 'admin' (config/admin.php:135) + admin.permission route check (config/admin.php:214-226) + no pending forced password change (app/Http/Middleware/ForceAdminPasswordChange.php:32-45)"
+        ],
+        "input_sources": [
+          "Request"
+        ],
+        "state_changing": false,
+        "route_group": "admin",
+        "notes": "Admin route registered by Admin::routes() / app/Admin/routes.php; controller method resolved through inheritance.",
+        "csrf": "not applicable (GET)",
+        "hidden": false,
+        "route_type": "A (static analysis; not exercised at runtime)"
+      }
+    ]
+  },
+  "focus_areas": {
+    "admin_guard": {
+      "summary": "All 95 admin-prefixed routes are gated by web -> admin (admin.auth/admin.pjax/admin.bootstrap/admin.permission/admin.session/admin.upload) -> admin.force-password.",
+      "unauthenticated_admin_paths": [
+        "GET|HEAD admin/auth/login (App\\Admin\\Controllers\\AuthController@getLogin)",
+        "POST admin/auth/login (App\\Admin\\Controllers\\AuthController@postLogin)",
+        "GET|HEAD admin/auth/logout (App\\Admin\\Controllers\\AuthController@getLogout)"
+      ],
+      "evidence": [
+        "config/admin.php:70 (prefix env ADMIN_ROUTE_PREFIX default \"admin\")",
+        "config/admin.php:74 (middleware web, admin, admin.force-password)",
+        "vendor/dcat/laravel-admin/src/Http/Middleware/Authenticate.php:24-32",
+        "config/admin.php:156-159"
+      ],
+      "notes": [
+        "auth/logout is reachable unauthenticated (except list) - unauthenticated logout is a no-op/U-C behaviour, not a bypass.",
+        "auth/setting is in the permission except list (config/admin.php:220-225) but still requires the admin session.",
+        "admin/dcat-api/* internal endpoints (9 routes) are behind the same admin session, but they instantiate classes from request input - see RA-7."
+      ]
+    },
+    "pay_yipay": {
+      "routes": [
+        {
+          "path": "/pay/yipay/{payway}/{orderSN}",
+          "method": "GET|HEAD",
+          "route_file": "routes/common/pay.php:27",
+          "controller": "App\\Http\\Controllers\\Pay\\YipayController@gateway",
+          "controller_file": "app/Http/Controllers/Pay/YipayController.php:11",
+          "middleware": [
+            "web",
+            "dujiaoka.pay_gate_way"
+          ],
+          "auth_level": "anonymous",
+          "notes": "Builds an auto-submitting HTML form with md5 signature (YipayController.php:11-56); output is escaped with e() for key/value but the form action is the merchant-hosted URL stored in pays.merchant_key (YipayController.php:44)."
+        },
+        {
+          "path": "/pay/yipay/notify_url",
+          "method": "GET|HEAD",
+          "route_file": "routes/common/pay.php:28",
+          "controller": "App\\Http\\Controllers\\Pay\\YipayController@notifyUrl",
+          "controller_file": "app/Http/Controllers/Pay/YipayController.php:59",
+          "middleware": [
+            "web",
+            "dujiaoka.pay_gate_way"
+          ],
+          "auth_level": "anonymous",
+          "csrf": "not applicable (GET, and path is in the except list)",
+          "notes": "Required fields out_trade_no/trade_no/money/sign (YipayController.php:61-64); order and gateway looked up from DB (:65-74); gateway route must equal /pay/yipay (:75-77); trade_status allow-list (:78-82); md5 over sorted params + pays.merchant_pem compared with hash_equals (YipayController.php:94); then OrderProcessService::completedOrder(out_trade_no, money, trade_no) at YipayController.php:101 inside try/catch (:99-109). Money comes from the request but is validated downstream by completedOrder()."
+        },
+        {
+          "path": "/pay/yipay/return_url",
+          "method": "GET|HEAD",
+          "route_file": "routes/common/pay.php:29",
+          "controller": "App\\Http\\Controllers\\Pay\\YipayController@returnUrl",
+          "controller_file": "app/Http/Controllers/Pay/YipayController.php:113",
+          "middleware": [
+            "web",
+            "dujiaoka.pay_gate_way"
+          ],
+          "auth_level": "anonymous",
+          "notes": "No signature. sleep(2) then redirect(url(\"detail-order-sn\", order_id from $_GET)) - the redirect target is built by the framework url() helper with a route parameter, so it is not an open redirect, but it lets anyone force a 2s worker sleep per request (sleep amplification on a GET)."
+        }
+      ],
+      "gateway_middleware_reality": "dujiaoka.pay_gate_way resolves to App\\Http\\Middleware\\PayGateWay whose handle() only calls $next($request) (app/Http/Middleware/PayGateWay.php:17-20). The 25 pay routes therefore carry a middleware name that performs no checking; all pay trust decisions are made inside the controllers (signature checks / order+gateway lookup)."
+    },
+    "public_state_changing": [
+      {
+        "path": "/do-install",
+        "method": "POST",
+        "auth": "anonymous",
+        "precondition": "install.lock absent",
+        "effect": "writes .env (HomeController.php:202), DB::unprepared install.sql (:204), updates admin_users id=1 username+bcrypt password (:206-211), writes install.lock (:216)"
+      },
+      {
+        "path": "/create-order",
+        "method": "POST",
+        "auth": "anonymous",
+        "precondition": "CSRF token; captcha only if is_open_img_code=1 (default CLOSE)",
+        "effect": "inserts order, may decrement stock / reserve card keys (OrderController.php:57-92)"
+      },
+      {
+        "path": "/pay-gateway/{payway}/{orderSN}",
+        "method": "GET",
+        "auth": "anonymous",
+        "precondition": "valid order_sn + matching pay gateway",
+        "effect": "auto-completes zero-amount orders (PayController.php:188-197)"
+      },
+      {
+        "path": "/pay/*/notify_url",
+        "method": "GET or POST",
+        "auth": "anonymous",
+        "precondition": "gateway signature with stored secret",
+        "effect": "marks order paid through OrderProcessService::completedOrder()"
+      },
+      {
+        "path": "/pay/stripe/charge",
+        "method": "GET",
+        "auth": "anonymous",
+        "precondition": "valid order_sn + Stripe token; context HMAC validated only when the parameter is present",
+        "effect": "Stripe Charge::create against the merchant account (StripeController.php:544)"
+      },
+      {
+        "path": "/pay/stripe/check",
+        "method": "GET",
+        "auth": "anonymous",
+        "precondition": "valid order_sn + Stripe source",
+        "effect": "Stripe Charge::create (StripeController.php:509)"
+      },
+      {
+        "path": "/pay/stripe/return_url",
+        "method": "GET",
+        "auth": "anonymous",
+        "precondition": "valid order_sn + Stripe source",
+        "effect": "Stripe Charge::create (StripeController.php:461)"
+      }
+    ],
+    "upload_endpoints": {
+      "public_uploads": "None. No route outside /admin accepts $_FILES. public/uploads does not exist in the repository (created at image build, Dockerfile:22-27) and nginx denies .php inside /uploads/ and /storage/ (conf/dujiaoka-nginx.conf:10-29).",
+      "admin_uploads": [
+        {
+          "path": "/admin/dcat-api/form/upload",
+          "method": "POST",
+          "controller": "Dcat\\Admin\\Http\\Controllers\\HandleFormController@uploadFile",
+          "file": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php",
+          "line": 37,
+          "auth_level": "admin",
+          "notes": "Does NOT call $form->passesAuthorization() (compare handle() at :20-24); the form class comes from request parameter Form::REQUEST_NAME and is instantiated with app($formClass) (:94-107)."
+        },
+        {
+          "path": "/admin/dcat-api/editor-md/upload",
+          "method": "POST",
+          "controller": "Dcat\\Admin\\Http\\Controllers\\EditorMDController@upload",
+          "auth_level": "admin"
+        },
+        {
+          "path": "/admin/dcat-api/tinymce/upload",
+          "method": "POST",
+          "controller": "Dcat\\Admin\\Http\\Controllers\\TinymceController@upload",
+          "auth_level": "admin"
+        },
+        {
+          "path": "/admin/dcat-api/form/destroy-file",
+          "method": "POST",
+          "controller": "Dcat\\Admin\\Http\\Controllers\\HandleFormController@destroyFile",
+          "auth_level": "admin"
+        },
+        {
+          "path": "/admin/goods (image field)",
+          "method": "POST",
+          "controller": "App\\Admin\\Controllers\\GoodsController",
+          "file": "app/Admin/Controllers/GoodsController.php",
+          "line": 144,
+          "auth_level": "admin",
+          "notes": "$form->image('picture')->autoUpload()->uniqueName() - the only project-defined image upload; stored under the dcat disk config."
+        }
+      ]
+    },
+    "install_routes": {
+      "routes": [
+        {
+          "path": "/install",
+          "method": "GET|HEAD",
+          "controller": "App\\Http\\Controllers\\Home\\HomeController@install",
+          "file": "app/Http/Controllers/Home/HomeController.php",
+          "line": 118,
+          "middleware": [
+            "web",
+            "install.check"
+          ],
+          "auth_level": "anonymous"
+        },
+        {
+          "path": "/do-install",
+          "method": "POST",
+          "controller": "App\\Http\\Controllers\\Home\\HomeController@doInstall",
+          "file": "app/Http/Controllers/Home/HomeController.php",
+          "line": 132,
+          "middleware": [
+            "web",
+            "install.check"
+          ],
+          "auth_level": "anonymous"
+        }
+      ],
+      "observations": [
+        "doInstall validates admin_username ^[A-Za-z0-9_]{3,32}$, admin_password >= 10 chars, app_url FILTER_VALIDATE_URL, admin_path ^/[A-Za-z0-9_-]+$ and rejects CR/LF in 13 named fields (HomeController.php:135-158).",
+        "The .env template substitution loop (HomeController.php:194-200) escapes backslash, double quote and dollar for the 13 validated fields but iterates $request->all(), so any other POST key whose name matches a {placeholder} in .env.example is substituted without the CR/LF pre-check (:138-145 only covers the listed names).",
+        "Only POST is accepted, so the install takeover requires either the CSRF token or a same-site request; both install routes disappear once install.lock exists."
+      ]
+    },
+    "other_anonymous_authz_notes": {
+      "order_lookup_without_ownership": "detailOrderSN() is an unscoped where(order_sn) lookup (app/Service/OrderService.php:212-216) reused by /bill/{orderSN}, /detail-order-sn/{orderSN}, /search-order-by-sn, /search-order-by-email, /search-order-by-browser. Order SNs are 16 random alphanumerics (uppercased) generated in app/Service/OrderProcessService.php:317, which is the only thing preventing enumeration.",
+      "email_only_order_disclosure": "search-order-by-email requires only email when is_open_search_pwd is CLOSE (default: app/Admin/Forms/SystemSetting.php:51-52 default STATUS_CLOSE; gate at app/Http/Controllers/Home/OrderController.php:208-216), and the rendered orderinfo page prints the delivered card secret $order[\"info\"] (resources/views/hyper/static_pages/orderinfo.blade.php:97).",
+      "no_throttle_on_storefront": "The web middleware group has no throttle, and none of the 13 storefront routes declares throttle; the api group throttle:60,1 only applies to /api/user (app/Http/Kernel.php:34-48).",
+      "captcha_surfaces": "img_verify_code is validated by App\\Rules\\VerifyImg only when is_open_img_code=1 (app/Rules/VerifyImg.php:27-33). The geetest branch in OrderService::validatorCreateOrder negates a Validator object, which is always false, so geetest is never enforced (app/Service/OrderService.php:81-90)."
+    }
+  },
+  "auth_gap_report": {
+    "generated_by": "php-audit-recon (routes-auth)",
+    "total_routes": 142,
+    "public_routes": 47,
+    "admin_routes": 95,
+    "suspicious_routes": 5,
+    "gaps": [
+      {
+        "path": "/do-install",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Home\\HomeController@doInstall",
+        "issue": "UNAUTHENTICATED_ADMIN_BOOTSTRAP",
+        "risk": "high",
+        "reason": "Anonymous route writes .env, imports the schema and sets the administrator credentials; only gate is the absence of install.lock plus CSRF.",
+        "evidence": "routes/common/web.php:37-42, app/Http/Controllers/Home/HomeController.php:132-228"
+      },
+      {
+        "path": "/search-order-by-email",
+        "method": "POST",
+        "controller": "App\\Http\\Controllers\\Home\\OrderController@searchOrderByEmail",
+        "issue": "AUTHZ_MISSING_OWNERSHIP (e-mail only)",
+        "risk": "medium",
+        "reason": "Returns up to 5 orders incl. delivered card secrets for any e-mail when is_open_search_pwd is off (default); no captcha, no throttle.",
+        "evidence": "app/Http/Controllers/Home/OrderController.php:206-222, app/Service/OrderService.php:259-269, resources/views/hyper/static_pages/orderinfo.blade.php:97"
+      },
+      {
+        "path": "/detail-order-sn/{orderSN}",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Home\\OrderController@detailOrderSN",
+        "issue": "AUTHZ_MISSING_OWNERSHIP (SN is the only secret)",
+        "risk": "medium",
+        "reason": "Order detail incl. delivered cards rendered without any session/ownership/password check; mitigated only by 16-char random order_sn.",
+        "evidence": "app/Http/Controllers/Home/OrderController.php:171-179, app/Service/OrderService.php:212-216, app/Service/OrderProcessService.php:317"
+      },
+      {
+        "path": "/pay/stripe/charge",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\StripeController@charge",
+        "issue": "OPTIONAL_INTEGRITY_TOKEN",
+        "risk": "medium",
+        "reason": "The HMAC context token is validated only when the request supplies it (filled()), so the state-changing charge path also succeeds without it.",
+        "evidence": "app/Http/Controllers/Pay/StripeController.php:536 (same pattern at :449 for return_url and :490 for check)"
+      },
+      {
+        "path": "/pay/yipay/return_url",
+        "method": "GET",
+        "controller": "App\\Http\\Controllers\\Pay\\YipayController@returnUrl",
+        "issue": "UNAUTHENTICATED_RESOURCE_AMPLIFICATION",
+        "risk": "low",
+        "reason": "sleep(2) executes before the redirect for any anonymous GET with order_id, allowing cheap worker-process exhaustion.",
+        "evidence": "app/Http/Controllers/Pay/YipayController.php:113-119"
+      }
+    ],
+    "summary": {
+      "total_unprotected": 5,
+      "high_risk_count": 1
+    }
+  },
+  "risks": [
+    {
+      "id": "RA-1",
+      "severity": "high",
+      "title": "Anonymous /do-install can rewrite .env, import the schema and set the administrator account whenever install.lock is missing",
+      "evidence": "routes/common/web.php:37-42 registers GET install + POST do-install inside middleware install.check; app/Http/Middleware/InstallCheck.php:17-23 only checks file_exists(base_path()/install.lock); app/Http/Controllers/Home/HomeController.php:202 file_put_contents(.env), :204 DB::unprepared(install.sql), :206-211 update admin_users id=1 with attacker-chosen username + bcrypt(password), :216 writes install.lock. install.lock is absent from the working tree (verified with ls).",
+      "why_it_may_not_be_exploitable": "The route set self-destructs as soon as install.lock exists, the shipped image creates the lock at container start unless INSTALL=true (Dockerfile:12-16), POST requires a CSRF token, and install.sql only succeeds against an empty database. Exploitation requires a deployment that is either freshly started without a lock or whose lock was deleted (restore/migration).",
+      "recommendation": "Fail closed: require an install token/APP_KEY from env, or ship install.lock in the image and delete the routes after install. Verify installed instances respond with a redirect on /install.",
+      "status": "unverified-dynamic"
+    },
+    {
+      "id": "RA-2",
+      "severity": "medium",
+      "title": "dujiaoka.pay_gate_way middleware is an empty passthrough, so 25 pay routes have no middleware-level protection",
+      "evidence": "app/Http/Middleware/PayGateWay.php:17-20 handle() returns $next($request) unconditionally; app/Http/Kernel.php:70 aliases dujiaoka.pay_gate_way to it; routes/common/pay.php:15 applies it to all 25 pay/* routes.",
+      "why_it_may_not_be_exploitable": "Each controller performs its own order lookup + gateway match (PayController::loadGateWay, app/Http/Controllers/PayController.php:89-107) and the notify handlers verify gateway signatures with hash_equals, so the missing middleware is not by itself an authentication gap.",
+      "recommendation": "Either implement the intended checks (order/payway/gateway consistency) in the middleware or delete the alias to avoid a false sense of protection; add a regression test asserting the middleware rejects a mismatched payway.",
+      "status": "design-debt"
+    },
+    {
+      "id": "RA-3",
+      "severity": "medium",
+      "title": "Geetest validation is dead code: the condition negates a Validator object, so captcha enforcement can never trigger on order creation",
+      "evidence": "app/Service/OrderService.php:81-90 — `dujiaoka_config_get(is_open_geetest) == STATUS_OPEN && !Validator::make($request->all(), [\"geetest_challenge\" => \"geetest\"], ...)`; a Validator instance is always truthy so `!` is always false and the RuleValidationException on :89 is unreachable. Additionally no \"geetest\" validation rule is registered anywhere in app/ or config/.",
+      "why_it_may_not_be_exploitable": "The image captcha (img_verify_code -> App\\Rules\\VerifyImg, app/Rules/VerifyImg.php:27-33) can still gate order creation, and the geetest switch defaults to CLOSE (app/Http/Middleware/DujiaoBoot.php:41-42, app/Admin/Forms/SystemSetting.php:89). The impact is that an operator who enables geetest in the admin panel gets no protection while believing otherwise.",
+      "recommendation": "Replace with `->fails()` on the validator and register/verify a real geetest rule; add a test that enabling is_open_geetest blocks an order POST without a valid challenge.",
+      "status": "unverified-dynamic"
+    },
+    {
+      "id": "RA-4",
+      "severity": "medium",
+      "title": "Order detail pages have no ownership check; the delivered card secret is rendered for anyone who can present an order number or an e-mail address",
+      "evidence": "app/Service/OrderService.php:212-216 detailOrderSN() = Order::query()->where(order_sn, $orderSN)->first() with no user/password scoping; app/Http/Controllers/Home/OrderController.php:171-179 (detail-order-sn) and :206-222 (search-order-by-email, where the search_pwd branch is skipped unless is_open_search_pwd=OPEN, default CLOSE at :211); resources/views/hyper/static_pages/orderinfo.blade.php:97 renders {{$order[\"info\"]}}.",
+      "why_it_may_not_be_exploitable": "Order SNs are 16 random uppercase alphanumerics (app/Service/OrderProcessService.php:317) so SN-based enumeration is impractical, and the e-mail route still needs the victim e-mail address plus up to 5 results with no rate limit. Card delivery to the buyer by e-mail/URL is the intended design of the product.",
+      "recommendation": "Enforce search_pwd by default (or per-order), bind order detail to the dujiaoka_orders cookie/session, and add throttling + captcha to the search endpoints.",
+      "status": "unverified-dynamic"
+    },
+    {
+      "id": "RA-5",
+      "severity": "medium",
+      "title": "Admin internal endpoints instantiate classes from request input and the upload variant skips form authorization",
+      "evidence": "POST /admin/dcat-api/form, /admin/dcat-api/form/upload, /admin/dcat-api/action, /admin/dcat-api/value, /admin/dcat-api/render all resolve to Dcat controllers; vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php:94-107 reads Form::REQUEST_NAME from the request and calls app($formClass); uploadFile() (:37-44) does not call $form->passesAuthorization() although handle() does (:20-24).",
+      "why_it_may_not_be_exploitable": "All of these paths sit behind the admin session plus admin.permission (config/admin.php:74, 214-226), so reaching them already requires an administrator account; classes must exist and implement handle()/upload semantics.",
+      "recommendation": "Treat as a post-auth attack surface: review the dcat fork for the class-instantiation path during the sinks phase and add passesAuthorization() to uploadFile in the pinned fork if upstream has not.",
+      "status": "handoff sinks"
+    },
+    {
+      "id": "RA-6",
+      "severity": "medium",
+      "title": "Dev-only Ignition routes (_ignition/execute-solution, /update-config, /health-check) appear in the working-tree route table",
+      "evidence": "docker run --rm -v \"$PWD\":/app webdevops/php:8.3 php artisan route:list --json -> 142 routes including POST _ignition/execute-solution, POST _ignition/update-config, GET _ignition/health-check guarded only by Spatie\\LaravelIgnition\\Http\\Middleware\\RunnableSolutionsEnabled; the same command against the shipped image (no mount) returns 139 routes and 0 _ignition routes.",
+      "why_it_may_not_be_exploitable": "Production images install with --no-dev (Dockerfile:9, Dockerfile-ARM64:31) so the package is absent; the middleware also requires debug + local environment.",
+      "recommendation": "Keep APP_DEBUG=false / APP_ENV=production in every reachable deployment and add a deploy assertion that `php artisan route:list | grep _ignition` is empty.",
+      "status": "unverified-dynamic"
+    },
+    {
+      "id": "RA-7",
+      "severity": "low",
+      "title": "GET-based payment callbacks (yipay, vpay) can be triggered by any third-party page and are CSRF-exempt by construction",
+      "evidence": "routes/common/pay.php:28 GET pay/yipay/notify_url, routes/common/pay.php:32 GET pay/vpay/notify_url; both are also inside the CSRF except list (app/Http/Middleware/VerifyCsrfToken.php:24-25) although CSRF does not apply to GET. Handlers verify md5 signatures with the gateway secret (app/Http/Controllers/Pay/YipayController.php:85-100, app/Http/Controllers/Pay/VpayController.php:52-86).",
+      "why_it_may_not_be_exploitable": "Without the gateway secret an attacker cannot produce a valid signature, so the state change is not forgeable; the residual risk is that any party who learns the secret can replay a signed callback repeatedly (no nonce/replay cache was found) and that a cross-site GET can force the handler to run.",
+      "recommendation": "Accept POST only for callbacks, or add an idempotency/replay guard keyed on trade_no, and verify the signature covers the amount that is actually credited.",
+      "status": "unverified-dynamic"
+    },
+    {
+      "id": "RA-8",
+      "severity": "low",
+      "title": "/api/user is a dead surface: token guard against a users table the shipped schema never creates",
+      "evidence": "routes/api.php:16 Route::middleware(auth:api)->get(/user, ...); config/auth.php:44-48 guard api = token/provider users -> App\\User; database/sql/install.sql CREATE TABLE list (8-484) contains admin_users but no users table and no api_token column.",
+      "why_it_may_not_be_exploitable": "The guard can never authenticate, so the closure cannot return a user; the route is effectively unreachable except as an error surface.",
+      "recommendation": "Remove routes/api.php or add the missing migration if the API is intended; no further auditing is needed on this route.",
+      "status": "dead-code"
+    },
+    {
+      "id": "RA-9",
+      "severity": "low",
+      "title": "No throttling on any storefront or pay route; the only rate limit is on the api group and the admin login",
+      "evidence": "app/Http/Kernel.php:34-48 (web group has no throttle, api group has throttle:60,1); none of the 13 storefront routes (routes/common/web.php:12-35) declares throttle; admin login has an explicit RateLimiter (app/Admin/Controllers/AuthController.php:17-26).",
+      "why_it_may_not_be_exploitable": "Order creation still passes CSRF + optional image captcha, and nginx/edge rate limiting may exist in deployments (not visible in conf/dujiaoka-nginx.conf).",
+      "recommendation": "Add throttle to create-order, the three search endpoints and pay/yipay/return_url; document required edge limits.",
+      "status": "unverified-dynamic"
+    }
+  ],
+  "handoffs": [
+    {
+      "to": "sinks",
+      "reason": "Unauthenticated/user-controlled entry points worth tracing: /do-install (13 named POST fields + arbitrary key->.env substitution, HomeController.php:189-202), /create-order (dynamic charge fields via format_charge_input, app/Service/OrderService.php:185-201), /search-order-by-* (raw e-mail/SN into Eloquent where clauses), /detail-order-sn (unscoped query), pay notify handlers (md5/hash_equals and completedOrder money handling), admin/dcat-api/* (app($formClass) at vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php:107)."
+    },
+    {
+      "to": "authz-audit",
+      "reason": "auth_gap_report gaps RA-4 (order ownership) and RA-1 (install takeover) need dynamic confirmation; credentials for the admin guard would come from the deployment being tested."
+    },
+    {
+      "to": "csrf-audit",
+      "reason": "CSRF except list is minimal (app/Http/Middleware/VerifyCsrfToken.php:21-26); verify same-site cookie config (config/session.php, SESSION_SAME_SITE) before concluding anything about POST /create-order and admin POSTs."
+    },
+    {
+      "to": "security-config",
+      "reason": "Admin prefix defaults to \"admin\" (config/admin.php:70), ADMIN_HTTPS handling (app/Http/Middleware/DujiaoSystem.php:17-29), TrustProxies empty by default (app/Http/Middleware/TrustProxies.php:19-35) which affects getClientIp() used in the login rate-limit key."
+    }
+  ],
+  "uncertainties": [
+    "[Needs Verification] Payjs notify signature verification happens inside the Xhat\\Payjs SDK (Payjs::notify()); the vendor package source was not read in this pass, so \"verified\" for pay/payjs/notify_url is unproven.",
+    "[Needs Verification] OrderProcessService::completedOrder() amount/trade_no validation (money mismatch, duplicate trade_no) was not traced here - it is the decisive control for every notify_url route and belongs to the sinks/verification phase.",
+    "[Needs Verification] Actual HTTP behaviour (redirect codes, 401 vs 302 on admin routes, middleware ordering under HTTPS) was not exercised: MODE=static, no web server or database was started.",
+    "[Needs Verification] Whether operator deployments set ADMIN_ROUTE_PREFIX / SESSION_SAME_SITE / TRUSTED_PROXIES differently from the defaults assumed here cannot be determined from the source tree.",
+    "[Tool Failure: none] Both artisan route:list runs (mounted dev tree and shipped image) and the PHP reflection pass exited 0; no fallback to manual parsing was needed beyond cross-validation."
+  ]
+}

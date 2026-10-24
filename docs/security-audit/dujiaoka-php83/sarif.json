@@ -1,0 +1,1148 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "dujiaoka-php83-static-audit",
+          "fullName": "DuJiaoka PHP 8.3 static security audit",
+          "version": "1.0.0",
+          "informationUri": "https://github.com/assimon/dujiaoka",
+          "rules": [
+            {
+              "id": "PQ-001",
+              "name": "PQ001",
+              "shortDescription": {
+                "text": "易支付(yipay)回调使用 install.sql 出厂占位密钥校验，匿名可伪造通知零支付完成订单并取走卡密"
+              },
+              "fullDescription": {
+                "text": "GET /pay/yipay/notify_url 的签名是 md5(排序参数串 + pays.merchant_pem)。install.sql 把 merchant_pem 写成仓内公开占位字面量，且装完后只启用 /pay/yipay，因此任何人可离线算出签名。下单时 payway 仅校验为整数并直接作为 pay_id，金额校验只比较攻击者已知的订单原价，签名通过后即 completedOrder() -> processAuto() 发卡。"
+              },
+              "help": {
+                "text": "CWE: CWE-798, CWE-345\n\n修复建议: install.sql 出厂全部 is_open=0 且 merchant_pem 置空/NULL；启用前强制校验密钥非空且不在占位符黑名单；回调需绑定 merchant_id/pid 与一次性 nonce，并用网关服务端查询二次核账；下单时校验 pay_id 已存在、已启用、已配置真实凭据；对已部署实例提供升级 SQL 关闭仍为占位密钥的渠道。",
+                "markdown": "**CWE**: CWE-798, CWE-345\n\n**修复建议**\n\ninstall.sql 出厂全部 is_open=0 且 merchant_pem 置空/NULL；启用前强制校验密钥非空且不在占位符黑名单；回调需绑定 merchant_id/pid 与一次性 nonce，并用网关服务端查询二次核账；下单时校验 pay_id 已存在、已启用、已配置真实凭据；对已部署实例提供升级 SQL 关闭仍为占位密钥的渠道。"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-798",
+                  "cwe-345"
+                ],
+                "security-severity": "7.5",
+                "severity": "high",
+                "confidence": 0.82,
+                "reachability": "anonymous"
+              }
+            },
+            {
+              "id": "PQ-003",
+              "name": "PQ003",
+              "shortDescription": {
+                "text": "匿名按邮箱检索订单缺少归属证明，search_pwd 默认关闭，直接返回已售卡密明文"
+              },
+              "fullDescription": {
+                "text": "POST /search-order-by-email 与 GET /detail-order-sn/{orderSN} 均为匿名路由（web 组，无 auth、无 throttle）。OrderService::withEmailAndPassword() 只按 email 过滤，when(!empty($searchPwd)) 使密码谓词默认可省略，且没有任何 session/cookie/owner 归属谓词。结果集（最近 5 单）在订单详情模板中以原样输出 orders.info，即已交付卡密明文。"
+              },
+              "help": {
+                "text": "CWE: CWE-639, CWE-200\n\n修复建议: 用一次性、限时的邮件签名链接（temporarySignedRoute）作为归属证明，不把裸邮箱当凭据；is_open_search_pwd 默认改为开启并在开启时强制 search_pwd 非空且 where() 硬过滤（同时修正 withEmailAndPassword 对 null 的 TypeError）；订单检索/详情路由加 throttle；列表与检索视图不返回 orders.info，卡密仅在签名链接或 order_sn 能力下展示；统一“未找到”响应消除邮箱存在性 oracle。",
+                "markdown": "**CWE**: CWE-639, CWE-200\n\n**修复建议**\n\n用一次性、限时的邮件签名链接（temporarySignedRoute）作为归属证明，不把裸邮箱当凭据；is_open_search_pwd 默认改为开启并在开启时强制 search_pwd 非空且 where() 硬过滤（同时修正 withEmailAndPassword 对 null 的 TypeError）；订单检索/详情路由加 throttle；列表与检索视图不返回 orders.info，卡密仅在签名链接或 order_sn 能力下展示；统一“未找到”响应消除邮箱存在性 oracle。"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-639",
+                  "cwe-200"
+                ],
+                "security-severity": "7.5",
+                "severity": "high",
+                "confidence": 0.85,
+                "reachability": "anonymous"
+              }
+            },
+            {
+              "id": "PQ-004",
+              "name": "PQ004",
+              "shortDescription": {
+                "text": "Stripe /check 以客户端提交的 stripe_usd_amount 作为期望金额，且订单绑定令牌可选，小额 Source 可完成高价订单"
+              },
+              "fullDescription": {
+                "text": "check() 从请求读取 stripe_usd_amount 作为“期望金额”，仅当 $request->filled('context') 时才校验订单上下文 HMAC，因此省略 context 即跳过绑定；随后把 Source 金额与该攻击者选定的整数比较（自指校验），再以 Source 自身金额 Charge，并用 $cacheord->actual_price 调用 completedOrder()。OrderProcessService 的 bccomp 比较的是同一个订单价格，无法发现少付。"
+              },
+              "help": {
+                "text": "CWE: CWE-472, CWE-840\n\n修复建议: 期望金额只在服务端计算（getUsdCurrency(actual_price)*100）并丢弃请求中的 stripe_usd_amount，最好在下单时固化 USD 金额；把订单上下文令牌改为强制（缺失即拒绝）；把实际扣款金额换算回订单币种传给 completedOrder，使 bccomp 成为真实对账；Source 追加服务端可控标识而非自由文本 owner->name；给支付路由加限流与幂等。",
+                "markdown": "**CWE**: CWE-472, CWE-840\n\n**修复建议**\n\n期望金额只在服务端计算（getUsdCurrency(actual_price)*100）并丢弃请求中的 stripe_usd_amount，最好在下单时固化 USD 金额；把订单上下文令牌改为强制（缺失即拒绝）；把实际扣款金额换算回订单币种传给 completedOrder，使 bccomp 成为真实对账；Source 追加服务端可控标识而非自由文本 owner->name；给支付路由加限流与幂等。"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-472",
+                  "cwe-840"
+                ],
+                "security-severity": "7.5",
+                "severity": "high",
+                "confidence": 0.82,
+                "reachability": "anonymous"
+              }
+            },
+            {
+              "id": "PQ-004-GET",
+              "name": "PQ004GET",
+              "shortDescription": {
+                "text": "Stripe /charge、/check 以匿名 GET 改变资金与订单状态，省略 context 即绕过绑定，并向匿名调用者回显原始异常文本"
+              },
+              "fullDescription": {
+                "text": "check/charge 为 GET，CSRF 只保护非安全动词，因此无任何请求完整性控制；订单上下文 HMAC 被 filled('context') 包裹，省略参数即无所有权绑定，第三方可用跨站 GET/<img> 驱动真实扣款与订单完成；异常分支直接 return $e->getMessage()，向匿名调用者泄露内部支付诊断信息。"
+              },
+              "help": {
+                "text": "CWE: CWE-352, CWE-209\n\n修复建议: 把 check/charge 改为 POST（或要求 Laravel 签名 URL）并启用 CSRF；上下文令牌强制校验并绑定买家 session/dujiaoka_orders cookie；pay 组统一加 throttle；把异常回显替换为通用错误 + 关联 ID 日志；如与 PQ-004 一并修复，优先落地服务端金额核对。",
+                "markdown": "**CWE**: CWE-352, CWE-209\n\n**修复建议**\n\n把 check/charge 改为 POST（或要求 Laravel 签名 URL）并启用 CSRF；上下文令牌强制校验并绑定买家 session/dujiaoka_orders cookie；pay 组统一加 throttle；把异常回显替换为通用错误 + 关联 ID 日志；如与 PQ-004 一并修复，优先落地服务端金额核对。"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-352",
+                  "cwe-209"
+                ],
+                "security-severity": "7.5",
+                "severity": "high",
+                "confidence": 0.85,
+                "reachability": "anonymous"
+              }
+            },
+            {
+              "id": "PQ-002",
+              "name": "PQ002",
+              "shortDescription": {
+                "text": "匿名 POST /do-install 仅以 install.lock 是否存在为闸门，可重写 .env、执行 DROP 建库脚本并重置 admin_users id=1"
+              },
+              "fullDescription": {
+                "text": "安装组仅由 InstallCheck 的 file_exists(install.lock) 守卫，缺失时 DujiaoBoot 还会把全站重定向到 /install。POST /do-install 用请求参数重写 .env、DB::unprepared 执行含 21 条 DROP TABLE 的 install.sql、把 admin_users id=1 改成攻击者账号，最后才写锁。CSRF 不构成屏障（GET /install 即可取 token）。实际影响被削弱：连接在建连前已按请求参数重建并 purge，DROP 作用在攻击者自己的库上；真正后果是 .env 覆写 + APP_KEY 轮换导致的持久配置破坏/DoS，以及未安装实例的首访者抢占管理员。"
+              },
+              "help": {
+                "text": "CWE: CWE-306\n\n修复建议: 为 POST /do-install 增加一次性安装令牌（hash_equals）并限制回环/私网来源，或改为 CLI 安装命令；先原子写锁再变更 .env/结构；.env 写入改为临时文件 + rename 并保留权限；目标库非空时拒绝执行 DROP 脚本；已初始化但缺锁时视为配置错误并 fail closed；compose 保持 INSTALL=false 并文档化安装期不可公网暴露。",
+                "markdown": "**CWE**: CWE-306\n\n**修复建议**\n\n为 POST /do-install 增加一次性安装令牌（hash_equals）并限制回环/私网来源，或改为 CLI 安装命令；先原子写锁再变更 .env/结构；.env 写入改为临时文件 + rename 并保留权限；目标库非空时拒绝执行 DROP 脚本；已初始化但缺锁时视为配置错误并 fail closed；compose 保持 INSTALL=false 并文档化安装期不可公网暴露。"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-306"
+                ],
+                "security-severity": "5.5",
+                "severity": "medium",
+                "confidence": 0.72,
+                "reachability": "anonymous"
+              }
+            },
+            {
+              "id": "PQ-005",
+              "name": "PQ005",
+              "shortDescription": {
+                "text": "卡密分配为非加锁先读后写，并发完成订单可把同一张卡发给两个订单"
+              },
+              "fullDescription": {
+                "text": "processAuto 在事务内用普通 SELECT take(buy_amount) 读取未售卡密，随后把明文写入订单并把状态置为已完成，最后执行 UPDATE ... WHERE id IN (...) AND is_loop=0——既不限定 status=未售，也不检查影响行数。MySQL 默认 REPEATABLE READ 下快照读使两个并发事务都能看到同一行。全仓库无 lockForUpdate/Cache::lock。结果是同一张卡可被两个订单同时交付，sales_volume 重复累加、通知重复派发。"
+              },
+              "help": {
+                "text": "CWE: CWE-362\n\n修复建议: 改为原子认领：UPDATE carmis SET status=2 WHERE goods_id=? AND status=1 AND is_loop=0 ORDER BY id LIMIT n，再按批次回读并断言数量；或在原事务内 lockForUpdate + 影响行数断言。新增 carmis.order_id（唯一）与 orders.trade_no 唯一索引；对 completedOrder 加 Cache::lock/订单行锁；salesVolumeIncr 仅在成功分支执行；修正无卡密时 count(null) 在 PHP 8 抛 TypeError 的问题。",
+                "markdown": "**CWE**: CWE-362\n\n**修复建议**\n\n改为原子认领：UPDATE carmis SET status=2 WHERE goods_id=? AND status=1 AND is_loop=0 ORDER BY id LIMIT n，再按批次回读并断言数量；或在原事务内 lockForUpdate + 影响行数断言。新增 carmis.order_id（唯一）与 orders.trade_no 唯一索引；对 completedOrder 加 Cache::lock/订单行锁；salesVolumeIncr 仅在成功分支执行；修正无卡密时 count(null) 在 PHP 8 抛 TypeError 的问题。"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-362"
+                ],
+                "security-severity": "5.5",
+                "severity": "medium",
+                "confidence": 0.78,
+                "reachability": "anonymous"
+              }
+            },
+            {
+              "id": "PQ-006",
+              "name": "PQ006",
+              "shortDescription": {
+                "text": "下单极验校验是死代码（Validator 对象当布尔取反恒为 false），开启极验也无法阻止自动化下单"
+              },
+              "fullDescription": {
+                "text": "条件写成 is_open_geetest == OPEN && !Validator::make(...)。Validator::make 返回对象（惰性、不执行规则），取反为 false，因此整个条件恒 false，:89 的抛异常不可达，geetest 扩展规则从不执行。POST /create-order 无任何 throttle（全局限流只存在于 api 组），图片验证码默认关闭，因此自动化客户端可无限下单，并借优惠券两种不同报错枚举有效券码、堆积 orders 与 OrderExpired 任务。"
+              },
+              "help": {
+                "text": "CWE: CWE-754, CWE-799\n\n修复建议: 赋值得结果并检查 fails()（或把 geetest 规则并入主校验器）；规则体改为显式读取参数并在缺失时 fail closed；对 create-order 加 throttle 命名限流；优惠券失败统一返回通用文案；考虑默认开启图片验证码；补一条 is_open_geetest=OPEN 时缺参数必须被拒的回归测试。",
+                "markdown": "**CWE**: CWE-754, CWE-799\n\n**修复建议**\n\n赋值得结果并检查 fails()（或把 geetest 规则并入主校验器）；规则体改为显式读取参数并在缺失时 fail closed；对 create-order 加 throttle 命名限流；优惠券失败统一返回通用文案；考虑默认开启图片验证码；补一条 is_open_geetest=OPEN 时缺参数必须被拒的回归测试。"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-754",
+                  "cwe-799"
+                ],
+                "security-severity": "5.5",
+                "severity": "medium",
+                "confidence": 0.9,
+                "reachability": "anonymous"
+              }
+            },
+            {
+              "id": "PQ-007",
+              "name": "PQ007",
+              "shortDescription": {
+                "text": "dcat 通用表单端点按请求指定类名实例化并调用 handle()，dcat-api 路由绕过权限检查且所有 Form::authorize() 恒真"
+              },
+              "fullDescription": {
+                "text": "resolveForm() 仅做 class_exists() -> app($formClass) -> method_exists('handle')，无类型/白名单/命名空间校验；随后执行 sanitize() 与 handle()。dcat-api 路由在 Permission 中间件里被视为 API 路由直接放行，且本仓库所有 Form 都未覆写 authorize()，默认返回 true，因此任意后台账号可驱动任意已注册 Form 处理器（系统设置、卡密导入、测试邮件，乃至厂商的扩展安装 Form）。"
+              },
+              "help": {
+                "text": "CWE: CWE-470, CWE-862\n\n修复建议: resolveForm() 增加 is_subclass_of(Widgets\\Form) 类型闸门 + 显式类白名单/不透明表单 ID；dcat-api 路由不得整体跳过 ACL，改为逐路由 admin.permission 或在 HandleFormController 内复查；为每个 App\\Admin\\Forms\\* 覆写 authorize() 并要求管理员/显式权限；InstallFromLocal 仅超管可用或移除，保持 dcat-admin-extensions 对 PHP 用户不可写；跟随上游修复版本。",
+                "markdown": "**CWE**: CWE-470, CWE-862\n\n**修复建议**\n\nresolveForm() 增加 is_subclass_of(Widgets\\Form) 类型闸门 + 显式类白名单/不透明表单 ID；dcat-api 路由不得整体跳过 ACL，改为逐路由 admin.permission 或在 HandleFormController 内复查；为每个 App\\Admin\\Forms\\* 覆写 authorize() 并要求管理员/显式权限；InstallFromLocal 仅超管可用或移除，保持 dcat-admin-extensions 对 PHP 用户不可写；跟随上游修复版本。"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-470",
+                  "cwe-862"
+                ],
+                "security-severity": "5.5",
+                "severity": "medium",
+                "confidence": 0.8,
+                "reachability": "authenticated-admin"
+              }
+            },
+            {
+              "id": "PQ-011",
+              "name": "PQ011",
+              "shortDescription": {
+                "text": "优惠券核销为非原子先查后减且无下限，is_use 从未作为约束，并发下单可超发折扣"
+              },
+              "fullDescription": {
+                "text": "下单先非锁定 SELECT 判定 ret<=0，再在订单落库后执行盲 decrement('ret',1) 与 is_use 更新，无谓词、无影响行数检查、无行锁，ret 为有符号 INT 可被减成负数。N 个并发请求在 ret=1 时全部通过并各自生成折扣订单；actual_price=0 的订单会被匿名 GET 自动完成并发卡，因此单次免费券可兑出 N 份商品。另 is_use 写入后从不参与查询条件，CouponBack 只回补 ret 不重置 is_use，后台“已使用”状态会漂移。"
+              },
+              "help": {
+                "text": "CWE: CWE-362, CWE-840\n\n修复建议: 把核销改为单条条件 UPDATE：SET ret=ret-1, is_use=2 WHERE coupon=? AND ret>0，影响行数为 0 即视为已用尽并回滚；或 lockForUpdate 重读并复查。为 ret 增加 UNSIGNED/CHECK(ret>=0)；CouponBack 增加幂等标记；如为一次券则让 withHasGoods 强制 is_use 谓词；给下单路由加限流并统一优惠券报错文案。",
+                "markdown": "**CWE**: CWE-362, CWE-840\n\n**修复建议**\n\n把核销改为单条条件 UPDATE：SET ret=ret-1, is_use=2 WHERE coupon=? AND ret>0，影响行数为 0 即视为已用尽并回滚；或 lockForUpdate 重读并复查。为 ret 增加 UNSIGNED/CHECK(ret>=0)；CouponBack 增加幂等标记；如为一次券则让 withHasGoods 强制 is_use 谓词；给下单路由加限流并统一优惠券报错文案。"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-362",
+                  "cwe-840"
+                ],
+                "security-severity": "5.5",
+                "severity": "medium",
+                "confidence": 0.78,
+                "reachability": "anonymous"
+              }
+            },
+            {
+              "id": "PQ-007-UPLOAD",
+              "name": "PQ007UPLOAD",
+              "shortDescription": {
+                "text": "dcat 上传端点按请求指定字段落盘并使用客户端扩展名，accept('txt') 仅前端生效，且不调用 passesAuthorization()"
+              },
+              "fullDescription": {
+                "text": "uploadFile() 从请求读取 upload_column/_column 决定字段，不校验其是否为上传字段，也不调用 passesAuthorization()；落盘文件名为 md5(uniqid()).<客户端扩展名>。accept('txt') 只写入 WebUploader 前端选项，服务端仅校验 max:5120。实际影响受字段类型限制：普通 file() 字段指向 public 磁盘（非 Web 根），Image 字段受 image 规则约束，因此当前无可执行落点，属于加固类缺陷；此外 destroyFile() 直接把 key 传给 delete()。"
+              },
+              "help": {
+                "text": "CWE: CWE-434, CWE-602\n\n修复建议: 让 accept() 同时下发服务端 mimes 规则并在 getRules() 生效；uploadFile()/destroyFile() 补 passesAuthorization() 并限制字段类型；存储名改为服务端白名单或 hashName()；destroyFile 归一化并拒绝 ..；Tinymce/EditorMD 控制器不再接受客户端 disk/dir/扩展名；保留 nginx deny 且不要贸然创建全局 storage:link；对用户内容加 nosniff/Content-Disposition 或使用独立上传域。",
+                "markdown": "**CWE**: CWE-434, CWE-602\n\n**修复建议**\n\n让 accept() 同时下发服务端 mimes 规则并在 getRules() 生效；uploadFile()/destroyFile() 补 passesAuthorization() 并限制字段类型；存储名改为服务端白名单或 hashName()；destroyFile 归一化并拒绝 ..；Tinymce/EditorMD 控制器不再接受客户端 disk/dir/扩展名；保留 nginx deny 且不要贸然创建全局 storage:link；对用户内容加 nosniff/Content-Disposition 或使用独立上传域。"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-434",
+                  "cwe-602"
+                ],
+                "security-severity": "3.1",
+                "severity": "low",
+                "confidence": 0.72,
+                "reachability": "authenticated-admin"
+              }
+            },
+            {
+              "id": "PQ-008",
+              "name": "PQ008",
+              "shortDescription": {
+                "text": "ApiHook 把管理员可编辑的 goods.api_hook 直接交给 file_get_contents()，无协议/主机/IP 白名单，且请求体带订单 PII"
+              },
+              "fullDescription": {
+                "text": "订单完成后 ApiHook 任务无条件派发，任务用 stream_context_create 构造 POST JSON 后直接 file_get_contents($goodInfo->api_hook)。写入端（商品表单 textarea）无任何 rules/保存回调，读取端无 filter_var、协议白名单、解析 IP 私网判定或重定向限制。返回值被丢弃，因此是盲 SSRF，但可借 gopher:// 等向内部 TCP 服务投递原始字节，并把标题/order_sn/邮箱/金额/订单信息以明文 JSON 发往任意主机。"
+              },
+              "help": {
+                "text": "CWE: CWE-918\n\n修复建议: 写入端校验 nullable|url:http,https 且仅允许 https、拒绝 userinfo、解析后拒绝回环/链路本地/RFC1918/CGNAT 与非预期端口；作业改用 HTTP 客户端（固定解析 IP、禁止跨主机重定向、设置超时），从而消除 gopher://、dict://；维护 webhook 主机白名单并且只发送 order_sn + HMAC 令牌，不外发明文 PII；同样整改 BarkPush（bark_server/bark_token）与 ServerJiang（token 在 URL 路径）。",
+                "markdown": "**CWE**: CWE-918\n\n**修复建议**\n\n写入端校验 nullable|url:http,https 且仅允许 https、拒绝 userinfo、解析后拒绝回环/链路本地/RFC1918/CGNAT 与非预期端口；作业改用 HTTP 客户端（固定解析 IP、禁止跨主机重定向、设置超时），从而消除 gopher://、dict://；维护 webhook 主机白名单并且只发送 order_sn + HMAC 令牌，不外发明文 PII；同样整改 BarkPush（bark_server/bark_token）与 ServerJiang（token 在 URL 路径）。"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-918"
+                ],
+                "security-severity": "3.1",
+                "severity": "low",
+                "confidence": 0.82,
+                "reachability": "authenticated-admin"
+              }
+            },
+            {
+              "id": "PQ-009",
+              "name": "PQ009",
+              "shortDescription": {
+                "text": "后台可写入的 footer/notice/商品描述以 {!! !!} 原样输出到全站，缺少保存期净化与 CSP"
+              },
+              "fullDescription": {
+                "text": "footer、notice、商品 description/buy_prompt 均由后台表单写入 system-setting 缓存或数据库，随后在多个模板用 {!! !!} 原样输出。全仓库无 strip_tags/htmlspecialchars/Purifier，且 SecurityHeaders 未下发 CSP；由于会话 Cookie path 为 '/' 且后台未启用独立 session 中间件，店铺前台脚本可在同源下以管理员身份请求 /admin/*。"
+              },
+              "help": {
+                "text": "CWE: CWE-79\n\n修复建议: 在保存期净化（引入 mews/purifier，对 notice/description/buy_prompt 用白名单 profile），footer 明确为受信 HTML 字段并至少剥离 script/on* 属性；新增 CSP（object-src 'none'、base-uri 'self'，尽量减少 unsafe-inline）；后台会话 Cookie 限定路径或使用独立 Cookie 名；多角色部署下审计 goods 编辑者不得访问系统设置；增加 Blade 原始输出 lint 门禁。",
+                "markdown": "**CWE**: CWE-79\n\n**修复建议**\n\n在保存期净化（引入 mews/purifier，对 notice/description/buy_prompt 用白名单 profile），footer 明确为受信 HTML 字段并至少剥离 script/on* 属性；新增 CSP（object-src 'none'、base-uri 'self'，尽量减少 unsafe-inline）；后台会话 Cookie 限定路径或使用独立 Cookie 名；多角色部署下审计 goods 编辑者不得访问系统设置；增加 Blade 原始输出 lint 门禁。"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-79"
+                ],
+                "security-severity": "3.1",
+                "severity": "low",
+                "confidence": 0.78,
+                "reachability": "authenticated-admin"
+              }
+            },
+            {
+              "id": "PQ-009-EXTRA-1",
+              "name": "PQ009EXTRA1",
+              "shortDescription": {
+                "text": "商品详情页把后台可编辑值 unescape() 拼进 <textarea>，可跳出标签并在更高权限管理员浏览器执行脚本"
+              },
+              "fullDescription": {
+                "text": "Show 构建器把 other_ipu_cnf、wholesale_price_cnf、api_hook 通过 unescape() 关闭转义后拼进字面 <textarea>。unescape() 使 Field::escape=false，show/field.blade.php 走 {!! $content !!} 分支，因此值可提前闭合 textarea 并注入事件处理器，在访问详情页的管理员会话内执行。"
+              },
+              "help": {
+                "text": "CWE: CWE-79\n\n修复建议: 保留只读显示但改用 e()/{{ }} 编码值，或去掉 unescape() 用纯文本容器；同时修复 OrderController.php:111-113（其来源为未认证买家输入，优先级更高）；为后台前缀加 CSP；对三个 textarea 字段增加保存期 markup 过滤；增加渲染断言回归测试。",
+                "markdown": "**CWE**: CWE-79\n\n**修复建议**\n\n保留只读显示但改用 e()/{{ }} 编码值，或去掉 unescape() 用纯文本容器；同时修复 OrderController.php:111-113（其来源为未认证买家输入，优先级更高）；为后台前缀加 CSP；对三个 textarea 字段增加保存期 markup 过滤；增加渲染断言回归测试。"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-79"
+                ],
+                "security-severity": "3.1",
+                "severity": "low",
+                "confidence": 0.75,
+                "reachability": "authenticated-admin"
+              }
+            },
+            {
+              "id": "PQ-010",
+              "name": "PQ010",
+              "shortDescription": {
+                "text": "会话与后台“记住我”Cookie 默认不带 Secure、无 HSTS 与 HTTP→HTTPS 跳转，recaller 期限为默认 400 天"
+              },
+              "fullDescription": {
+                "text": ".env.example 将 SESSION_SECURE_COOKIE 显式设为 false（比留空更差：留空时 Symfony 会在安全请求上自动加 Secure），而 conf/php.ini 只设置 cookie_httponly。SecurityHeaders 仅在 $request->isSecure() 时下发 HSTS，TRUSTED_PROXIES 出厂为空导致反代后始终不发送；nginx/compose 只暴露 80 且无跳转。后台“记住我”沿用 Laravel 默认 576000 分钟（400 天），捕获 recaller 即可免密恢复管理员会话。"
+              },
+              "help": {
+                "text": "CWE: CWE-614, CWE-319, CWE-613\n\n修复建议: .env.example 改为 SESSION_SECURE_COOKIE=true（文档说明本地 HTTP 需显式关闭），并显式 SESSION_HTTP_ONLY=true；部署侧提供 443 与 301 跳转；TLS 反代必须设置 TRUSTED_PROXIES 或改由 nginx 直接下发 HSTS；为 admin guard 设置更短的 remember 期限或关闭“记住我”；conf/php.ini 补 session.cookie_secure/cookie_samesite/use_strict_mode 或删除误导性的 session.* 指令；CI 增加 Set-Cookie 属性检查。",
+                "markdown": "**CWE**: CWE-614, CWE-319, CWE-613\n\n**修复建议**\n\n.env.example 改为 SESSION_SECURE_COOKIE=true（文档说明本地 HTTP 需显式关闭），并显式 SESSION_HTTP_ONLY=true；部署侧提供 443 与 301 跳转；TLS 反代必须设置 TRUSTED_PROXIES 或改由 nginx 直接下发 HSTS；为 admin guard 设置更短的 remember 期限或关闭“记住我”；conf/php.ini 补 session.cookie_secure/cookie_samesite/use_strict_mode 或删除误导性的 session.* 指令；CI 增加 Set-Cookie 属性检查。"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "php",
+                  "laravel",
+                  "cwe-614",
+                  "cwe-319",
+                  "cwe-613"
+                ],
+                "security-severity": "3.1",
+                "severity": "low",
+                "confidence": 0.82,
+                "reachability": "anonymous"
+              }
+            }
+          ]
+        }
+      },
+      "originalUriBaseIds": {
+        "SRCROOT": {
+          "uri": "file:///",
+          "description": {
+            "text": "repository root"
+          }
+        }
+      },
+      "automationDetails": {
+        "id": "dujiaoka-php83/static/2026-10-24"
+      },
+      "invocations": [
+        {
+          "executionSuccessful": true,
+          "commandLine": "static review (no dynamic phase)",
+          "properties": {
+            "mode": "static",
+            "dynamicPhaseRan": false,
+            "commit": "b9ef09f2e1ac63f35aa041418266e96b09802783"
+          }
+        }
+      ],
+      "results": [
+        {
+          "ruleId": "PQ-001",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "易支付(yipay)回调使用 install.sql 出厂占位密钥校验，匿名可伪造通知零支付完成订单并取走卡密 — GET /pay/yipay/notify_url 的签名是 md5(排序参数串 + pays.merchant_pem)。install.sql 把 merchant_pem 写成仓内公开占位字面量，且装完后只启用 /pay/yipay，因此任何人可离线算出签名。下单时 payway 仅校验为整数并直接作为 pay_id，金额校验只比较攻击者已知的订单原价，签名通过后即 completedOrder() -> processAuto() 发卡。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "database/sql/install.sql",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 515,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "database/sql/install.sql:515",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-001:database/sql/install.sql:515"
+          },
+          "properties": {
+            "severity": "high",
+            "confidence": 0.82,
+            "preconditions": "install.lock 存在；pays id 14/15/16 仍为出厂占位 merchant_pem（install.sql:539-540 默认仅启用 /pay/yipay）；存在自动发货且有库存的商品",
+            "verdict": "isReal=true；验证器置信度 0.82，裁定 high（原报 critical）。链路在当前提交完整、无补偿控制；削弱因素仅为配置前提（运营者未替换占位密钥），且“同一请求完成他人订单”子结论因 order_sn 为 16 位随机不可枚举而不成立，已从影响中剔除。",
+            "evidence": [
+              "app/Http/Controllers/Pay/YipayController.php:82-95 ksort 拼接后 $expectedSign = md5($sign . $payGateway->merchant_pem)，再经 PayController.php:123-130 hash_equals 比较",
+              "app/Http/Controllers/Pay/YipayController.php:101 completedOrder($data['out_trade_no'], (float)$data['money'], $data['trade_no'])",
+              "routes/common/pay.php:28 GET pay/yipay/notify_url；所属组唯一中间件 dujiaoka.pay_gate_way 为直通（app/Http/Middleware/PayGateWay.php:17-20）",
+              "database/sql/install.sql:515-517（id 14/15/16 的 merchant_pem 为占位字面量）",
+              "database/sql/install.sql:539-540 先全量 is_open=0，再仅启用 pay_handleroute='/pay/yipay'",
+              "app/Casts/EncryptedOrPlaintext.php:17-30 非加密载荷原样返回，因此种子值不经加密即用作密钥",
+              "app/Http/Controllers/Home/HomeController.php:204 DB::unprepared 导入 seed，不触发模型加密分支",
+              "app/Service/OrderProcessService.php:418-422 仅 bccomp(actual_price, 传入值)，与调用方传入值同源",
+              "app/Service/OrderProcessService.php:509-538 processAuto 将卡密明文写入 orders.info 并置 STATUS_COMPLETED"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-003",
+          "ruleIndex": 1,
+          "level": "error",
+          "message": {
+            "text": "匿名按邮箱检索订单缺少归属证明，search_pwd 默认关闭，直接返回已售卡密明文 — POST /search-order-by-email 与 GET /detail-order-sn/{orderSN} 均为匿名路由（web 组，无 auth、无 throttle）。OrderService::withEmailAndPassword() 只按 email 过滤，when(!empty($searchPwd)) 使密码谓词默认可省略，且没有任何 session/cookie/owner 归属谓词。结果集（最近 5 单）在订单详情模板中以原样输出 orders.info，即已交付卡密明文。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/Service/OrderService.php",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 259,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "app/Service/OrderService.php:259",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-003:app/Service/OrderService.php:259"
+          },
+          "properties": {
+            "severity": "high",
+            "confidence": 0.85,
+            "preconditions": "install.lock 存在；攻击者知道任一客户邮箱。默认配置下 is_open_search_pwd 未开启（install.sql 无该配置行，dujiaoka_config_get 回落 CLOSE）",
+            "verdict": "isReal=true；置信度 0.85，high。原报中“开启开关后空 search_pwd 可绕过谓词”被反驳（Laravel 12 input() 返回 null 会导致 TypeError/500，而非静默放行）；“泄露买家 IP”不成立（无视图渲染 buy_ip）；默认主题应为 unicorn。核心匿名 + 无归属校验 + 卡密明文暴露链路成立。",
+            "evidence": [
+              "routes/common/web.php:24,30,32 匿名路由，组中间件仅 dujiaoka.boot",
+              "app/Http/Kernel.php:33-43 web 组无 auth、无 throttle",
+              "app/Service/OrderService.php:259-269 where('email') + when(!empty($searchPwd)) + take(5)，无归属谓词",
+              "app/Http/Controllers/Home/OrderController.php:206-221 邮箱检索入口与渲染",
+              "app/Admin/Forms/SystemSetting.php:49-52 is_open_search_pwd 默认 STATUS_CLOSE",
+              "app/Helpers/functions.php:58-62 配置缺失时返回调用方默认值",
+              "app/Service/OrderProcessService.php:520-524 卡密写入 orders.info",
+              "resources/views/unicorn/static_pages/orderinfo.blade.php:83-85（默认主题）、hyper:97-98、luna:112-127 原样输出 info"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-004",
+          "ruleIndex": 2,
+          "level": "error",
+          "message": {
+            "text": "Stripe /check 以客户端提交的 stripe_usd_amount 作为期望金额，且订单绑定令牌可选，小额 Source 可完成高价订单 — check() 从请求读取 stripe_usd_amount 作为“期望金额”，仅当 $request->filled('context') 时才校验订单上下文 HMAC，因此省略 context 即跳过绑定；随后把 Source 金额与该攻击者选定的整数比较（自指校验），再以 Source 自身金额 Charge，并用 $cacheord->actual_price 调用 completedOrder()。OrderProcessService 的 bccomp 比较的是同一个订单价格，无法发现少付。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/Http/Controllers/Pay/StripeController.php",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 485,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "app/Http/Controllers/Pay/StripeController.php:485",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-004:app/Http/Controllers/Pay/StripeController.php:485"
+          },
+          "properties": {
+            "severity": "high",
+            "confidence": 0.82,
+            "preconditions": "install.lock 存在；Stripe 渠道（pays id 21）由运营者启用并配置真实 sk 密钥（出厂 is_open=0，PayService::detail 过滤 is_open=1，故默认安装返回 fail）；攻击者自行创建 Source 并省略 context 参数",
+            "verdict": "isReal=true；置信度 0.82，high。验证器确认 :485-515 为真实漏洞块（原报 line 524 指向的恰是安全实现），且 :454-459 属另一条 CNY 路径；结论与严重性不受影响。",
+            "evidence": [
+              "app/Http/Controllers/Pay/StripeController.php:484-488 $stripeUsdAmount = (int)$request->input('stripe_usd_amount', <服务端默认>)",
+              "app/Http/Controllers/Pay/StripeController.php:489-494 if ($request->filled('context') && !validateOrderContextToken(...)) —— 绑定可选",
+              "app/Http/Controllers/Pay/StripeController.php:501-508 将 Source amount 与攻击者值比较，owner->name == orderid",
+              "app/Http/Controllers/Pay/StripeController.php:509-516 Charge::create(['amount'=>$source_object->amount]) + completedOrder(orderid, $cacheord->actual_price, $charge->id)",
+              "app/Service/OrderProcessService.php:418-422 bccomp($order->actual_price, $actualPrice) 为自比较",
+              "app/Http/Controllers/Pay/StripeController.php:27-34,380,398-404 可发布密钥与客户端创建 Source 的 JS（金额/owner 由客户端决定）",
+              "app/Http/Controllers/PayController.php:132-155 build/validateOrderContextToken 仅绑定金额，不绑定会话",
+              "routes/common/pay.php:37 匿名 GET，组中间件为直通的 dujiaoka.pay_gate_way",
+              "对照组：同文件 :544-548 /charge 与 :454-459 服务端计算金额"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-004-GET",
+          "ruleIndex": 3,
+          "level": "error",
+          "message": {
+            "text": "Stripe /charge、/check 以匿名 GET 改变资金与订单状态，省略 context 即绕过绑定，并向匿名调用者回显原始异常文本 — check/charge 为 GET，CSRF 只保护非安全动词，因此无任何请求完整性控制；订单上下文 HMAC 被 filled('context') 包裹，省略参数即无所有权绑定，第三方可用跨站 GET/<img> 驱动真实扣款与订单完成；异常分支直接 return $e->getMessage()，向匿名调用者泄露内部支付诊断信息。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/Http/Controllers/Pay/StripeController.php",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 536,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "app/Http/Controllers/Pay/StripeController.php:536",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-004-GET:app/Http/Controllers/Pay/StripeController.php:536"
+          },
+          "properties": {
+            "severity": "high",
+            "confidence": 0.85,
+            "preconditions": "install.lock 存在；Stripe 渠道已启用且配置真实密钥；攻击者知道目标 order_sn（可由 PQ-003 获取）；/charge 金额为服务端计算，故该端点不存在价格绕过",
+            "verdict": "isReal=true；置信度 0.85，验证器由 medium 上调为 high（未认证即可改变状态 + 绑定可选）。原报关于 install.sql:539-540 默认禁用的前提有误（Stripe 行 is_open=1，真正闸门是占位密钥），已修正；原报“CSRF 借用买家凭据”表述较弱，实际缺陷是无认证的可变状态 GET。",
+            "evidence": [
+              "routes/common/pay.php:37-38 Route::get('stripe/check'|'stripe/charge')，组中间件仅 dujiaoka.pay_gate_way（app/Http/Middleware/PayGateWay.php:17-19 直通）",
+              "app/Http/Middleware/VerifyCsrfToken.php:19-24 只对非安全动词生效，except 仅 notify_url/return_url",
+              "app/Http/Kernel.php:33-43 web 组含 CSRF；throttle 只在 api 组（:46）",
+              "app/Http/Controllers/Pay/StripeController.php:536 if ($request->filled('context') && !validateOrderContextToken(...))",
+              "app/Http/Controllers/Pay/StripeController.php:544-545,550 Charge::create 服务端金额 + completedOrder",
+              "app/Http/Controllers/Pay/StripeController.php:554-556 return $e->getMessage()",
+              "app/Service/OrderService.php:212-216 detailOrderSN 无归属过滤"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-002",
+          "ruleIndex": 4,
+          "level": "warning",
+          "message": {
+            "text": "匿名 POST /do-install 仅以 install.lock 是否存在为闸门，可重写 .env、执行 DROP 建库脚本并重置 admin_users id=1 — 安装组仅由 InstallCheck 的 file_exists(install.lock) 守卫，缺失时 DujiaoBoot 还会把全站重定向到 /install。POST /do-install 用请求参数重写 .env、DB::unprepared 执行含 21 条 DROP TABLE 的 install.sql、把 admin_users id=1 改成攻击者账号，最后才写锁。CSRF 不构成屏障（GET /install 即可取 token）。实际影响被削弱：连接在建连前已按请求参数重建并 purge，DROP 作用在攻击者自己的库上；真正后果是 .env 覆写 + APP_KEY 轮换导致的持久配置破坏/DoS，以及未安装实例的首访者抢占管理员。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/Http/Controllers/Home/HomeController.php",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 202,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "app/Http/Controllers/Home/HomeController.php:202",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-002:app/Http/Controllers/Home/HomeController.php:202"
+          },
+          "properties": {
+            "severity": "medium",
+            "confidence": 0.72,
+            "preconditions": "install.lock 缺失且实例可被网络访问（裸机/composer 部署、INSTALL=true 残留、宿主侧锁文件丢失）；攻击者提供可达的 MySQL/Redis（写入前的连通性探测必须通过）；.env 可写",
+            "verdict": "isReal=true；置信度 0.72，验证器由 high 下调为 medium。可达性与缺失控制成立；“DROP 掉受害者全部数据”“重置受害者 id=1 管理员”被反驳（连接指向攻击者自有库），且未安装实例本就处于安装模式，真正风险为配置破坏与首访者抢占。",
+            "evidence": [
+              "routes/common/web.php:37-42 匿名 GET install / POST do-install，中间件仅 install.check",
+              "app/Http/Middleware/InstallCheck.php:19-24 仅判断 install.lock 是否存在",
+              "app/Http/Controllers/Home/HomeController.php:162-182 按请求参数重建 DB/Redis 连接并 purge/probe",
+              "app/Http/Controllers/Home/HomeController.php:202 file_put_contents(.env, LOCK_EX)",
+              "app/Http/Controllers/Home/HomeController.php:204 DB::unprepared(install.sql)",
+              "app/Http/Controllers/Home/HomeController.php:206-211 admin_users id=1 更新",
+              "app/Http/Controllers/Home/HomeController.php:216 install.lock 最后写入",
+              "database/sql/install.sql 含 21 条 DROP TABLE IF EXISTS（:7,54,72,...）",
+              "app/Http/Middleware/VerifyCsrfToken.php:23-26 仅豁免 pay notify/return；resources/views/common/install.blade.php:700 提供 csrf_field",
+              "app/Http/Middleware/DujiaoBoot.php:19-22 无锁时全站跳转 /install"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-005",
+          "ruleIndex": 5,
+          "level": "warning",
+          "message": {
+            "text": "卡密分配为非加锁先读后写，并发完成订单可把同一张卡发给两个订单 — processAuto 在事务内用普通 SELECT take(buy_amount) 读取未售卡密，随后把明文写入订单并把状态置为已完成，最后执行 UPDATE ... WHERE id IN (...) AND is_loop=0——既不限定 status=未售，也不检查影响行数。MySQL 默认 REPEATABLE READ 下快照读使两个并发事务都能看到同一行。全仓库无 lockForUpdate/Cache::lock。结果是同一张卡可被两个订单同时交付，sales_volume 重复累加、通知重复派发。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/Service/CarmisService.php",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 31,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "app/Service/CarmisService.php:31",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-005:app/Service/CarmisService.php:31"
+          },
+          "properties": {
+            "severity": "medium",
+            "confidence": 0.78,
+            "preconditions": "自动发货商品存在 is_loop=0 的未售卡密；同一商品至少两笔待支付订单的回调被并发处理（notify 端点无限流）",
+            "verdict": "isReal=true；置信度 0.78，medium。静态链路与缺失控制确认，但没有实际并发统计（MODE=static），且攻击者多为自伤式重复发卡，真实损失落在后续买家。与既有 docs/security-audit/findings.json 的 PQ-06-B 同源，应合并。",
+            "evidence": [
+              "app/Service/CarmisService.php:31-38 where('status', STATUS_UNSOLD)->take($byAmount)->get()（无锁）",
+              "app/Service/CarmisService.php:51 whereIn('id',$ids)->where('is_loop',0)->update(['status'=>SOLD])（无 status 谓词，返回值被丢弃）",
+              "app/Service/OrderProcessService.php:392,512-526,434 事务内读->写 info->soldByIDS",
+              "app/Service/OrderProcessService.php:399-417 订单状态与 trade_no 去重使用非锁定 first()",
+              "database/sql/install.sql:252-266 carmis 仅有主键与 goods_id 索引，无 order_id/唯一绑定",
+              "app/Http/Controllers/PayController.php:188-198 零价订单匿名 GET 即可内联完成，扩大并发触发面",
+              "app/Http/Kernel.php:46 throttle 仅在 api 组，pay 路由无限流"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-006",
+          "ruleIndex": 6,
+          "level": "warning",
+          "message": {
+            "text": "下单极验校验是死代码（Validator 对象当布尔取反恒为 false），开启极验也无法阻止自动化下单 — 条件写成 is_open_geetest == OPEN && !Validator::make(...)。Validator::make 返回对象（惰性、不执行规则），取反为 false，因此整个条件恒 false，:89 的抛异常不可达，geetest 扩展规则从不执行。POST /create-order 无任何 throttle（全局限流只存在于 api 组），图片验证码默认关闭，因此自动化客户端可无限下单，并借优惠券两种不同报错枚举有效券码、堆积 orders 与 OrderExpired 任务。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/Service/OrderService.php",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 81,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "app/Service/OrderService.php:81",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-006:app/Service/OrderService.php:81"
+          },
+          "properties": {
+            "severity": "medium",
+            "confidence": 0.9,
+            "preconditions": "无（缺陷本身无条件成立）；实际滥用需运营者已开启 is_open_geetest",
+            "verdict": "isReal=true；置信度 0.90，medium。死代码与可达性完全确认；CSRF 不构成反自动化（token 可从公开下单页获取）。优惠券枚举/队列放大只是“缺少有效反自动化”的部分后果，已在条目中限定归因。",
+            "evidence": [
+              "app/Service/OrderService.php:80-90 Validator::make(...) 取反作为布尔",
+              "app/Service/Geetest/GeetestServiceProvider.php:17 Validator::extend('geetest', ...) 唯一实现，从未被调用",
+              "vendor/laravel/framework/src/Illuminate/Validation/Factory.php:104-129 make() 仅构造校验器",
+              "routes/common/web.php:20 POST create-order，组中间件仅 dujiaoka.boot",
+              "app/Http/Kernel.php:19-41 全局与 web 组均无 throttle，throttle 只在 api 组",
+              "app/Service/OrderProcessService.php:312-364 保存订单、核销优惠券、派发 OrderExpired",
+              "app/Service/OrderService.php:155-170 优惠券两种不同报错构成枚举 oracle",
+              "app/Admin/Forms/SystemSetting.php:49-50,89 图片验证码默认 CLOSE / 极验开关",
+              "resources/views/*/static_pages/buy.blade.php 极验仅前端 JS，且表单自带 csrf_field"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-007",
+          "ruleIndex": 7,
+          "level": "warning",
+          "message": {
+            "text": "dcat 通用表单端点按请求指定类名实例化并调用 handle()，dcat-api 路由绕过权限检查且所有 Form::authorize() 恒真 — resolveForm() 仅做 class_exists() -> app($formClass) -> method_exists('handle')，无类型/白名单/命名空间校验；随后执行 sanitize() 与 handle()。dcat-api 路由在 Permission 中间件里被视为 API 路由直接放行，且本仓库所有 Form 都未覆写 authorize()，默认返回 true，因此任意后台账号可驱动任意已注册 Form 处理器（系统设置、卡密导入、测试邮件，乃至厂商的扩展安装 Form）。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 107,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php:107",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-007:vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php:107"
+          },
+          "properties": {
+            "severity": "medium",
+            "confidence": 0.8,
+            "preconditions": "1) 持有 dcat admin guard 的会话（含无任何角色的受限管理员）；2) 有效 CSRF；3) 若走扩展安装分支，base_path('dcat-admin-extensions') 需对 PHP 用户可写（出厂镜像 /app 为 root:root，该分支不可用）",
+            "verdict": "isReal=true；置信度 0.80，验证器由 high 下调为 medium。机理与缺失控制均成立（含 upload/destroy-file 不调用 passesAuthorization），但有效目标限于 Form 子类（任意类只会 500），出厂单超管部署无权限提升，RCE 分支受目录属主限制。",
+            "evidence": [
+              "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php:96-113 $formClass = $request->get('_form_') -> class_exists -> app() -> method_exists",
+              "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php:20-34 passesAuthorization/form/validate/sanitize/handle",
+              "vendor/dcat/laravel-admin/src/Widgets/Form.php:104 REQUEST_NAME = '_form_'",
+              "vendor/dcat/laravel-admin/src/Admin.php:611-631 dcat-api 路由组，中间件 config('admin.route.middleware')",
+              "config/admin.php:68-77 ['web','admin','admin.force-password']",
+              "vendor/dcat/laravel-admin/src/Http/Middleware/Permission.php:82-97 isApiRoute/shouldPassThrough 对 dcat-api 直接放行",
+              "vendor/dcat/laravel-admin/src/Traits/HasAuthorization.php:16-30 authorize() 默认 return true；app/ 内无覆写",
+              "app/Admin/Forms/SystemSetting.php:18-24 整体覆写 system-setting 缓存（含 SMTP 口令、模板）",
+              "app/Admin/Forms/ImportCarmis.php:20-55 插入任意卡密、按提交路径读写 public 磁盘",
+              "vendor/dcat/laravel-admin/src/Http/Forms/InstallFromLocal.php:15-51 + src/Extend/Manager.php:212-251 按扩展包 composer.json 的类名 new $serviceProvider()"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-011",
+          "ruleIndex": 8,
+          "level": "warning",
+          "message": {
+            "text": "优惠券核销为非原子先查后减且无下限，is_use 从未作为约束，并发下单可超发折扣 — 下单先非锁定 SELECT 判定 ret<=0，再在订单落库后执行盲 decrement('ret',1) 与 is_use 更新，无谓词、无影响行数检查、无行锁，ret 为有符号 INT 可被减成负数。N 个并发请求在 ret=1 时全部通过并各自生成折扣订单；actual_price=0 的订单会被匿名 GET 自动完成并发卡，因此单次免费券可兑出 N 份商品。另 is_use 写入后从不参与查询条件，CouponBack 只回补 ret 不重置 is_use，后台“已使用”状态会漂移。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/Service/CouponService.php",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 62,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "app/Service/CouponService.php:62",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-011:app/Service/CouponService.php:62"
+          },
+          "properties": {
+            "severity": "medium",
+            "confidence": 0.78,
+            "preconditions": "绑定该商品的优惠券 is_open=1 且 ret>=1；并发重叠的 POST /create-order；若追求直接资损需折扣足以把 actual_price 打到 0",
+            "verdict": "isReal=true；置信度 0.78，medium。“未支付订单永久烧券”被反驳（OrderExpired + CouponBack 会回补，前提是 worker 运行）；“价格篡改”也被反驳（计算全在服务端）。核心并发超发链路成立，未有并发实测（MODE=static）。",
+            "evidence": [
+              "app/Service/OrderService.php:159-167 非锁定查询，唯一闸门 if ($coupon->ret <= 0)",
+              "app/Service/OrderProcessService.php:339-354 先落订单与价格",
+              "app/Service/OrderProcessService.php:356-361 used() + retDecr()",
+              "app/Service/CouponService.php:42-47 update(['is_use'=>STATUS_USE])",
+              "app/Service/CouponService.php:60-62 where('coupon')->decrement('ret',1)（无 ret>0 谓词，返回值忽略）",
+              "app/Service/CouponService.php:29-37 withHasGoods 谓词不含 is_use",
+              "database/sql/install.sql:276-288 coupons.ret int NOT NULL DEFAULT 0（有符号，无 CHECK）",
+              "app/Service/OrderProcessService.php:293-300,509-527 价格下限钳 0 + processAuto 发卡",
+              "app/Http/Controllers/PayController.php:188-198 actual_price=0 的订单自动完成",
+              "app/Jobs/CouponBack.php:44-56 回补 ret 无幂等保护"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-007-UPLOAD",
+          "ruleIndex": 9,
+          "level": "note",
+          "message": {
+            "text": "dcat 上传端点按请求指定字段落盘并使用客户端扩展名，accept('txt') 仅前端生效，且不调用 passesAuthorization() — uploadFile() 从请求读取 upload_column/_column 决定字段，不校验其是否为上传字段，也不调用 passesAuthorization()；落盘文件名为 md5(uniqid()).<客户端扩展名>。accept('txt') 只写入 WebUploader 前端选项，服务端仅校验 max:5120。实际影响受字段类型限制：普通 file() 字段指向 public 磁盘（非 Web 根），Image 字段受 image 规则约束，因此当前无可执行落点，属于加固类缺陷；此外 destroyFile() 直接把 key 传给 delete()。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 43,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php:43",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-007-UPLOAD:vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php:43"
+          },
+          "properties": {
+            "severity": "low",
+            "confidence": 0.72,
+            "preconditions": "1) 后台会话 + CSRF；2) _column 必须是所选 Form 已声明的字段；3) 出厂镜像未创建 storage:link，且两份 nginx 配置均拒绝 /uploads/、/storage/ 下的 .php",
+            "verdict": "isReal=true；置信度 0.72，验证器由 medium 下调为 low。代码事实全部成立，但“任意扩展名写入 Web 根”“webshell”“同源 XSS 提权”均被反驳（Image 字段限制、无 storage:link、nginx deny、后台本就可写全站配置）。destroyFile 的路径穿越删除另属后台自伤。",
+            "evidence": [
+              "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php:37-44 uploadFile 未调用 passesAuthorization()（对比 :22）",
+              "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php:53,56 字段名来自请求",
+              "vendor/dcat/laravel-admin/src/Form/Field/UploadField.php:191-208,313-316,343-368 客户端扩展名 + 仅校验 getRules()",
+              "vendor/dcat/laravel-admin/src/Form/Field/WebUploader.php:20-31 accept() 只写前端选项",
+              "app/Admin/Forms/ImportCarmis.php:69-74 disk('public') + uniqueName + accept('txt') + maxSize(5120)",
+              "vendor/dcat/laravel-admin/src/Form/Field/Image.php:59 rules = ['nullable','image']",
+              "conf/default.conf 与 conf/dujiaoka-nginx.conf 的 /uploads/、/storage/ 嵌套 deny .php；无 storage:link",
+              "vendor/dcat/laravel-admin/src/Http/Controllers/TinymceController.php:14-31、EditorMDController.php:14-31 接受客户端 disk/dir 与扩展名（同类根因）"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-008",
+          "ruleIndex": 10,
+          "level": "note",
+          "message": {
+            "text": "ApiHook 把管理员可编辑的 goods.api_hook 直接交给 file_get_contents()，无协议/主机/IP 白名单，且请求体带订单 PII — 订单完成后 ApiHook 任务无条件派发，任务用 stream_context_create 构造 POST JSON 后直接 file_get_contents($goodInfo->api_hook)。写入端（商品表单 textarea）无任何 rules/保存回调，读取端无 filter_var、协议白名单、解析 IP 私网判定或重定向限制。返回值被丢弃，因此是盲 SSRF，但可借 gopher:// 等向内部 TCP 服务投递原始字节，并把标题/order_sn/邮箱/金额/订单信息以明文 JSON 发往任意主机。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/Jobs/ApiHook.php",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 85,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "app/Jobs/ApiHook.php:85",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-008:app/Jobs/ApiHook.php:85"
+          },
+          "properties": {
+            "severity": "low",
+            "confidence": 0.82,
+            "preconditions": "1) 有权限写商品行的管理员把 api_hook 设为任意 URL；2) 该商品被下单并完成；3) allow_url_fopen 保持开启（conf/php.ini 未设置该指令）；出厂空值不受影响",
+            "verdict": "isReal=true；置信度 0.82，验证器由 medium 下调为 low。链路与缺失控制成立，但写入源为已完全受信的管理员、输出为盲 SSRF、功能本身即出站 webhook，属加固缺口而非权限边界突破。",
+            "evidence": [
+              "app/Jobs/ApiHook.php:60-62 读取 goods.api_hook，空则提前返回",
+              "app/Jobs/ApiHook.php:65-74 POST JSON 含 title/order_sn/email/actual_price/info",
+              "app/Jobs/ApiHook.php:77-85 stream_context_create + file_get_contents($goodInfo->api_hook, false, $context)",
+              "app/Admin/Controllers/GoodsController.php:155 textarea('api_hook') 无 rules",
+              "app/Service/OrderProcessService.php:452 订单完成后无条件 ApiHook::dispatch($order)",
+              "conf/supervisord.conf:32 queue:work 常驻；.env.example:36 QUEUE_CONNECTION=redis",
+              "conf/php.ini:1-8 未设置 open_basedir/disable_functions/allow_url_fopen"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-009",
+          "ruleIndex": 11,
+          "level": "note",
+          "message": {
+            "text": "后台可写入的 footer/notice/商品描述以 {!! !!} 原样输出到全站，缺少保存期净化与 CSP — footer、notice、商品 description/buy_prompt 均由后台表单写入 system-setting 缓存或数据库，随后在多个模板用 {!! !!} 原样输出。全仓库无 strip_tags/htmlspecialchars/Purifier，且 SecurityHeaders 未下发 CSP；由于会话 Cookie path 为 '/' 且后台未启用独立 session 中间件，店铺前台脚本可在同源下以管理员身份请求 /admin/*。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "resources/views/hyper/layouts/_footer.blade.php",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 12,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "resources/views/hyper/layouts/_footer.blade.php:12",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-009:resources/views/hyper/layouts/_footer.blade.php:12"
+          },
+          "properties": {
+            "severity": "low",
+            "confidence": 0.78,
+            "preconditions": "后台管理员保存系统设置或商品表单；Dcat 编辑器原样存储提交的 HTML（无 purifier）；单超管部署仅为 self-XSS，多角色部署可实现受限管理员 -> 超管",
+            "verdict": "isReal=true；置信度 0.78，low。源码链路完整、无补偿控制，但唯一写入方是已拥有站点全部权限的后台账号，字段本身即为“自定义 HTML”，因此按加固项而非可利用存储型 XSS 计。",
+            "evidence": [
+              "resources/views/hyper/layouts/_footer.blade.php:12 {!! dujiaoka_config_get('footer') !!}（luna:4、unicorn:9 同）",
+              "resources/views/luna/layouts/_notice{,_sm,_xs}.blade.php:9、hyper/static_pages/home.blade.php:109、unicorn/static_pages/home.blade.php:12",
+              "resources/views/{hyper:150/162,unicorn:156/175,luna:290/331}/static_pages/buy.blade.php {!! $description !!} / {!! $buy_prompt !!}",
+              "app/Admin/Forms/SystemSetting.php:20,55-56 Cache::put('system-setting',$input) + editor('notice')/textarea('footer')",
+              "app/Admin/Controllers/GoodsController.php:151-152 editor('buy_prompt')/editor('description')",
+              "app/Helpers/functions.php:58-62 读取缓存无过滤",
+              "vendor/dcat/laravel-admin/src/Http/Controllers/HandleFormController.php:32 + Widgets/Form.php:789-810 + Form/Field.php:831,853 原样存储",
+              "app/Http/Middleware/SecurityHeaders.php:15-22 无 Content-Security-Policy",
+              "config/session.php:143 path '/'；config/admin.php:76 enable_session_middleware=false"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-009-EXTRA-1",
+          "ruleIndex": 12,
+          "level": "note",
+          "message": {
+            "text": "商品详情页把后台可编辑值 unescape() 拼进 <textarea>，可跳出标签并在更高权限管理员浏览器执行脚本 — Show 构建器把 other_ipu_cnf、wholesale_price_cnf、api_hook 通过 unescape() 关闭转义后拼进字面 <textarea>。unescape() 使 Field::escape=false，show/field.blade.php 走 {!! $content !!} 分支，因此值可提前闭合 textarea 并注入事件处理器，在访问详情页的管理员会话内执行。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/Admin/Controllers/GoodsController.php",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 117,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "app/Admin/Controllers/GoodsController.php:117",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-009-EXTRA-1:app/Admin/Controllers/GoodsController.php:117"
+          },
+          "properties": {
+            "severity": "low",
+            "confidence": 0.75,
+            "preconditions": "具备商品编辑权限的后台账号写入 </textarea><img src=x onerror=...>；更高权限管理员打开该商品详情页；orderinfo 同款模式可由匿名下单者植入（见 verdict）",
+            "verdict": "isReal=true；置信度 0.75，low。四类反驳（关系字段解析、批量赋值、页面未使用、无法区分角色）均失败，链路确定；但需要“低权限管理员写入 + 高权限管理员访问”，单超管部署退化为 self-XSS。",
+            "evidence": [
+              "app/Admin/Controllers/GoodsController.php:117-125 三段 unescape()->as(fn => '<textarea ...>'.$value.'</textarea>')",
+              "app/Admin/Controllers/GoodsController.php:153-155 textarea('other_ipu_cnf'/'wholesale_price_cnf'/'api_hook') 无 rules",
+              "vendor/dcat/laravel-admin/src/Show/Field.php:527-530 unescape() => escape(false)；:706-742 导出 escape=false 并应用 as() 闭包",
+              "vendor/dcat/laravel-admin/resources/views/show/field.blade.php:18,26 escape=false 时 {!! $content !!}",
+              "vendor/dcat/laravel-admin/src/Repositories/EloquentRepository.php:509-512 setAttribute 写入（绕过 $guarded）",
+              "app/Admin/Controllers/OrderController.php:111-113 同款模式，其值来源为匿名下单输入（app/Service/OrderService.php:197）"
+            ]
+          }
+        },
+        {
+          "ruleId": "PQ-010",
+          "ruleIndex": 13,
+          "level": "note",
+          "message": {
+            "text": "会话与后台“记住我”Cookie 默认不带 Secure、无 HSTS 与 HTTP→HTTPS 跳转，recaller 期限为默认 400 天 — .env.example 将 SESSION_SECURE_COOKIE 显式设为 false（比留空更差：留空时 Symfony 会在安全请求上自动加 Secure），而 conf/php.ini 只设置 cookie_httponly。SecurityHeaders 仅在 $request->isSecure() 时下发 HSTS，TRUSTED_PROXIES 出厂为空导致反代后始终不发送；nginx/compose 只暴露 80 且无跳转。后台“记住我”沿用 Laravel 默认 576000 分钟（400 天），捕获 recaller 即可免密恢复管理员会话。"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "conf/php.ini",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 8,
+                  "startColumn": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "conf/php.ini:8",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "PQ-010:conf/php.ini:8"
+          },
+          "properties": {
+            "severity": "low",
+            "confidence": 0.82,
+            "preconditions": "部署可经 HTTP 访问（出厂形态），或 TLS 由代理终止但 TRUSTED_PROXIES 为空；攻击者具备网络监听位置",
+            "verdict": "isReal=true；置信度 0.82，low。有效控制面为 .env.example + config/session.php（php.ini 的 session.* 对 Laravel 不生效，属误导信号）；原报“会话固定”部分已被反驳（登录时 regenerate），Secure 缺失需网络位置，故仅作加固。",
+            "evidence": [
+              ".env.example:66,69,70 TRUSTED_PROXIES= 空、SESSION_SECURE_COOKIE=false、SESSION_SAME_SITE=lax",
+              "config/session.php:34,143,169,182,197 lifetime 120 / path '/' / secure / http_only / same_site",
+              "conf/php.ini:7-8 仅 expose_php=Off 与 session.cookie_httponly=1",
+              "app/Http/Controllers/Home/HomeController.php:184-203 安装器原样复制 .env.example",
+              "vendor/laravel/framework/src/Illuminate/Cookie/CookieServiceProvider.php:17-23 与 CookieJar.php:200-203 显式 bool 被保留",
+              "vendor/symfony/http-foundation/Response.php:299-303 + Cookie.php:373-376 仅在 secure 为 null 时按 HTTPS 自动升级",
+              "vendor/laravel/framework/src/Illuminate/Auth/SessionGuard.php:62,626-644 400 天 recaller；:196-240 免密重建会话",
+              "config/admin.php:151-152 后台登录页启用“记住我”",
+              "app/Http/Middleware/SecurityHeaders.php:20-22 HSTS 依赖 isSecure()",
+              "docker-compose.yml:6-8 / conf/default.conf:1-2 仅 80，无 HTTP→HTTPS 跳转"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "verifiedCount": 14,
+        "severityCounts": {
+          "critical": 0,
+          "high": 4,
+          "medium": 5,
+          "low": 5,
+          "info": 0
+        },
+        "rejectedOrSuspectedCount": 28,
+        "coverageGaps": [
+          "MODE=static：未启动应用容器、未发送任何 HTTP 请求、未执行漏洞利用 PoC；所有“可达/可利用”结论均为源码路径 + 框架与数据库语义推导。",
+          "未运行动态扫描/DAST（ZAP、nuclei、Burp 自动化等），也未做认证态爬取与并发压测；PQ-005/PQ-011 的竞态与 PQ-006 的自动化滥用均无实测数据。",
+          "主机无 php/composer，PHP 工具（route:list、sink_finder、composer audit、php -i）全部在 Docker 镜像内以只读挂载执行；结果依赖镜像与本地 vendor/，与出厂 --no-dev 构建产物可能存在差异。",
+          "未运行外部 SAST 商业/第三方引擎（Semgrep、Psalm、PHPStan 安全规则集、SonarQube 等）；仅使用仓库自带 AST sink 扫描器 + 人工验证，故 sink 覆盖不等于缺陷覆盖（例如逻辑类缺陷不在 AST 规则内）。",
+          "依赖侧仅做版本匹配（composer audit + OSV 批量 + packagist advisories），无 reachability 分析；cve.circl.lu 对控制用例也返回 0，未贡献结果；npm/前端依赖（package.json、webpack.mix.js）未扫描；基础镜像 OS 包（webdevops/php-nginx:8.3、alpine:3.20）未做 CVE 扫描。",
+          "未验证 TRUSTED_PROXIES/TLS 拓扑与真实网关配置；反向代理链上的 isSecure()、HSTS 与 Secure 行为为静态推导（PQ-010）。",
+          "支付渠道（Stripe、易支付、V免签、Payjs 等）未做真实账户联调；签名算法与 SDK 内部实现仅读源码，未做黑盒验证。",
+          "后台账号被假定为“受信但可审计”：未做多管理员角色组合的权限矩阵实测；PQ-007/PQ-009 的权限提升前提依赖非默认的多角色部署。",
+          "未读取、未记录任何 .env 值、Cookie、数据库口令或真实支付凭据；涉及占位字面量仅作为源码文本引用。",
+          "结论为 2026-10-24 对提交 b9ef09f 的快照；发布前须重跑依赖与配置检查（基础镜像摘要与 advisory 库会变化）。",
+          "报告产出期间工作树被并行修复修改（git status 显示 15 个跟踪文件变更）；本报告结论仍以提交 b9ef09f 为准，未验证并发改动，行号可能已偏移。"
+        ],
+        "baselineNote": "证据基线为提交 b9ef09f；报告产出期间工作树出现并行修复改动（15 文件，含 PQ-01/05/06 标注），未参与验证，行号以基线提交为准。"
+      }
+    }
+  ]
+}

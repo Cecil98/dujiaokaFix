@@ -1,0 +1,249 @@
+{
+  "artifact": "dependencies.json",
+  "recon_kind": "dependencies",
+  "generated_by": "php-audit-recon (RECON_KIND=dependencies)",
+  "generated_at": "2026-10-24T06:34:19Z",
+  "mode": "static",
+  "target": ".",
+  "source_of_truth": "composer.lock (132 locked packages: 96 production + 36 dev)",
+  "tooling": {
+    "host_php": "absent (no php/composer binary on host; confirmed via `which php composer` -> not found)",
+    "container": "webdevops/php:8.3 (image present locally), repo mounted at /app, --network host",
+    "container_php": "PHP 8.3.36 (cli), Zend Engine v4.3.36, ionCube PHP Loader v15.5.1",
+    "composer": "2.10.3 (inside container)",
+    "host_curl_jq": "curl and jq available; php/composer not available"
+  },
+  "manifest": {
+    "composer_json": {
+      "path": "composer.json",
+      "sha256": "d6a27c9250239926e66480993b5eabd14460bca14db6f65b7670b2f068150662",
+      "platform_requirement": "php ^8.3 (composer.json:17)",
+      "custom_repository": "composer.json:10-15 declares a VCS repository https://github.com/Cecil98/dcat-admin (fork used for dcat/laravel-admin 2.2.5, composer.json:19)",
+      "scripts": "composer.json:63-74 only standard Laravel post-autoload-dump / post-root-package-install / post-create-project-cmd; no eval/base64_decode/curl in scripts"
+    },
+    "composer_lock": {
+      "path": "composer.lock",
+      "sha256": "5622cbe1d2b55f8d1f9822beb1935bca1918c0c5241c52f94fc34971d4525982",
+      "content_hash": "9d710bb32c186b2445b8cc2d6d6eba1e",
+      "plugin_api_version": "2.9.0 (composer.lock:9835)",
+      "packages_production": 96,
+      "packages_dev": 36,
+      "composer_plugin_type_packages": 0,
+      "platform_overrides": { "php": "^8.3" }
+    },
+    "vendor_installed_json": {
+      "path": "vendor/composer/installed.json",
+      "package_count": 132,
+      "note": "on-disk workspace vendor matches the lock count (132) and includes dev packages (composer install was run without --no-dev locally); vendor/ is not tracked in git (`git ls-files vendor | wc -l` = 0)"
+    }
+  },
+  "tool_runs": [
+    {
+      "id": "TOOL-1",
+      "tool": "composer audit --locked --no-plugins --no-scripts --format=json",
+      "execution": "docker run --rm --network host -v \"$PWD\":/app -w /app webdevops/php:8.3 composer audit ...",
+      "exit_code": 0,
+      "status": "success",
+      "raw_result": { "advisories": [], "abandoned": { "box/spout": null }, "filter": [] },
+      "interpretation": "No security advisories matched for any locked version; composer reported one abandoned package (box/spout, no suggested replacement -> JSON null)."
+    },
+    {
+      "id": "TOOL-2",
+      "tool": "tools/php-audit-skills/tools/vuln_intel.sh composer.lock docs/security-audit/dujiaoka-php83/raw/dependency-intel",
+      "status": "success",
+      "sources_queried": ["api.osv.dev /v1/querybatch (Packagist ecosystem)", "cve.circl.lu (high-risk vendors only)"],
+      "output_file": "docs/security-audit/dujiaoka-php83/raw/dependency-intel/vuln_intel.json",
+      "result": "0 vulnerabilities (CRITICAL 0 / HIGH 0 / MEDIUM 0 / LOW 0); output file content is an empty JSON array []",
+      "note": "The helper parses 132 packages and labels all entries is_dev=false; dev/production separation in this artifact is taken from composer.lock `packages` vs `packages-dev` instead."
+    },
+    {
+      "id": "TOOL-3",
+      "tool": "independent OSV.dev /v1/querybatch cross-check",
+      "execution": "jq-built payload of 132 {package,version} queries (git tag prefix trimmed), POST https://api.osv.dev/v1/querybatch",
+      "queries_sent": 132,
+      "matched_results": 0,
+      "interpretation": "Independent re-query reproduces TOOL-1/TOOL-2 negative result; not a script artifact."
+    },
+    {
+      "id": "TOOL-4",
+      "tool": "control test (validates advisory DB reachability + semver filtering)",
+      "execution": "synthetic /tmp lock with guzzlehttp/guzzle 7.4.0 -> composer audit --locked in same container; plus OSV /v1/query for the same package/version",
+      "result": "composer audit returned multiple advisories (e.g. PKSA-gcrk-3vtt-1r14 / CVE-2026-69246, affectedVersions \"<7.15.2\"; PKSA-fy2t-3c5f-827y, affectedVersions \"<7.15.1\") and OSV returned 10 GHSA ids",
+      "interpretation": "Tooling and network path are functional and advisory matching is version-aware, so the zero-advisory result for the project lock is a genuine negative for the locked versions, not a silent tool failure. The installed guzzle is 7.16.0, which is outside those affected ranges."
+    }
+  ],
+  "advisories": [],
+  "advisories_status": "empty_by_evidence",
+  "advisory_negative_evidence": {
+    "EVID_DEP_AUDIT_EMPTY": "composer audit (TOOL-1) exit 0 with advisories: [] for composer.lock sha256 5622cbe1...5982",
+    "EVID_DEP_OSV_EMPTY": "OSV.dev querybatch (TOOL-3) 132 queries -> 0 matched vulns",
+    "EVID_DEP_SEMVER_SANITY": "guzzlehttp/guzzle locked at 7.16.0 (composer.lock prod), while the known affected ranges observed in TOOL-4 are <7.15.1 / <7.15.2 / >=8.0.0,<8.0.1 -> not applicable by semver",
+    "as_of": "2026-10-24",
+    "caveat": "Negative result is only valid for the locked versions and for the advisory feeds reachable at scan time; it does not prove absence of unpublished/0-day issues or of vulnerable code patterns in application usage."
+  },
+  "abandoned_packages": [
+    {
+      "package": "box/spout",
+      "installed_version": "v3.3.0",
+      "dependent": "dcat/easy-excel 1.1.0 requires box/spout (composer.lock)",
+      "dependency_type": "production (transitive)",
+      "abandoned_flag_source": "composer audit output `abandoned: {\"box/spout\": null}` (null = abandoned, no replacement suggested); composer.lock:64 also carries the abandoned marker",
+      "last_release": "v3.3.0 published 2021-05-14 (repo.packagist.org p2 metadata)",
+      "advisory_match": "none",
+      "risk_summary": "Unmaintained transitive library used for spreadsheet import/export (excel upload/export paths). No advisory applies today, but future defects will not be fixed upstream.",
+      "severity": "low"
+    }
+  ],
+  "dev_dependency_exposure": {
+    "locked_dev_packages": 36,
+    "high_risk_dev_packages_present": [
+      "phpunit/phpunit 11.5.57",
+      "spatie/laravel-ignition 2.12.1 (spatie/ignition 1.16.0)",
+      "nunomaduro/collision v8.9.5",
+      "fakerphp/faker v1.24.1",
+      "mockery/mockery 1.6.15",
+      "filp/whoops 2.18.7"
+    ],
+    "checks": {
+      "phpunit_eval_stdin_rce": "Not applicable: vendor/phpunit/phpunit/src/Util/PHP/ contains Job.php, JobRunner.php, JobRunnerRegistry.php, Result.php only (no eval-stdin.php, CVE-2017-9841 vector absent) and phpunit 11.x is not in the affected range.",
+      "debugbar_or_telescope": "No barryvdh/laravel-debugbar and no laravel/telescope in composer.lock.",
+      "provider_registration": "config/app.php:144-181 registers only framework + App + Jenssegers\\Agent + Geetest providers; no dev-only ServiceProvider is registered unconditionally, so ignition/whoops only activate when APP_DEBUG=true.",
+      "production_install_mode": "Dockerfile:9 runs `composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader`, so the shipped image excludes the 36 dev packages.",
+      "env_defaults": ".env.example:2 APP_ENV=production and .env.example:4 APP_DEBUG=false (values not copied from any live .env; no secrets read)."
+    },
+    "conclusion": "Dev-dependency exposure is mitigated in the container build path (--no-dev) and by APP_DEBUG=false default. Residual risk: the working-tree vendor/ currently contains dev packages, so any deployment that ships the repository's vendor/ verbatim (e.g. bind-mount/rsync instead of the Dockerfile build) would expose phpunit/ignition files — verify deployment method. [Needs Verification: actual deployment artifact]",
+    "severity": "low"
+  },
+  "supply_chain": {
+    "typosquat_scan": "No package name in composer.lock is within 1-2 characters of another well-known PHP package name (132 names reviewed); no duplicate/confusable vendor names found.",
+    "source_hosts": "All 132 packages resolve `source.url` to github.com; no non-GitHub VCS/PATH/artifact repositories in the lock.",
+    "custom_fork_dependency": {
+      "package": "dcat/laravel-admin",
+      "installed_version": "v2.2.5",
+      "source": "https://github.com/Cecil98/dcat-admin.git",
+      "reference": "8ff1f8225351824f454f57388e8be812e3870407",
+      "evidence": "composer.json:10-15 (repositories), composer.json:19 (pinned 2.2.5), composer.lock:382-393 (source/dist + commit reference)",
+      "risk": "Admin-panel package consumed from a personal fork instead of the upstream packagist release (upstream latest published version is 2.2.3-beta, 2023-02-15). Commit reference pinning limits tag-move risk, but the code provenance is outside upstream review.",
+      "severity": "low"
+    },
+    "composer_plugins": "0 packages of type composer-plugin in the lock; composer.json declares no allow-plugins config, and no plugin code executes during `composer install` (Dockerfile:9 does not pass --no-plugins, but there is nothing to execute).",
+    "scripts_anomaly_scan": "No eval/base64_decode/curl-style payloads in composer.json scripts (composer.json:63-74)."
+  },
+  "runtime_platform": {
+    "container_image_php_modules": "amqp apcu bcmath bz2 calendar ctype curl date dom excimer exif FFI fileinfo filter ftp gd gettext gmp hash iconv imagick imap intl ionCube Loader json ldap libxml mbstring memcached mongodb mysqli mysqlnd openssl opentelemetry pcntl pcre PDO pdo_mysql pdo_pgsql pdo_sqlite pgsql Phar posix protobuf random readline redis Reflection session shmop SimpleXML soap sockets sodium SPL sqlite3 standard sysvmsg sysvsem sysvshm tokenizer vips xml xmlreader xmlrpc xmlwriter xsl yaml Zend OPcache zip zlib",
+    "notable_extension_findings": [
+      {
+        "extension": "ionCube Loader (v15.5.1)",
+        "evidence": "`php -v` inside webdevops/php:8.3 reports 'with the ionCube PHP Loader v15.5.1'",
+        "application_encrypted_files": "none found (grep for 'ionCube Loader' / 'ioncube_encoder' / 'sg_load' over app/, config/, routes/, bootstrap/, public/ returned no matches)",
+        "risk": "Loader present but unused by project code; residual capability to execute encrypted PHP if such a file is ever dropped into the docroot.",
+        "severity": "info"
+      },
+      {
+        "extension": "FFI",
+        "evidence": "module list contains FFI; `php -i` shows ffi.enable => preload",
+        "risk": "FFI in 'preload' mode is restricted to preloaded scripts; not exploitable from ordinary request code by itself.",
+        "severity": "info"
+      },
+      {
+        "extension": "xmlrpc",
+        "evidence": "module list contains xmlrpc",
+        "risk": "Only relevant if application code calls xmlrpc_* on untrusted XML; no dependency in the lock requires ext-xmlrpc.",
+        "severity": "info"
+      },
+      {
+        "extension": "xdebug",
+        "evidence": "absent from module list",
+        "risk": "none",
+        "severity": "info"
+      }
+    ],
+    "php_ini_hardening_observed": {
+      "image_defaults": "expose_php => Off, allow_url_include => Off, allow_url_fopen => On, disable_functions => no value, open_basedir => no value",
+      "project_overrides": "conf/php.ini: date.timezone=Asia/Shanghai, memory_limit=256M, upload_max_filesize=50M, post_max_size=50M, max_execution_time=300, cgi.fix_pathinfo=0, expose_php=Off (conf/php.ini:7), session.cookie_httponly=1 (conf/php.ini:8)",
+      "gap": "No disable_functions / open_basedir restriction is applied, so any command-execution sink reaches full shell capability (sink-level impact amplifier; see sinks recon).",
+      "severity": "low"
+    },
+    "web_exposure_of_dependencies": {
+      "document_root": "/app/public (Dockerfile:3 WEB_DOCUMENT_ROOT=/app/public; conf/default.conf `root /app/public`)",
+      "vendor_web_accessible": false,
+      "public_vendor_dir": "public/vendor contains only dcat-admin and dujiaoka-admin static assets; no symlink to ../vendor (find public -maxdepth 1 -type l returned nothing)",
+      "dotfile_deny": "conf/dujiaoka-nginx.conf and conf/default.conf deny dotfiles except /.well-known and deny PHP execution under /uploads/ and /storage/",
+      "severity": "info"
+    }
+  },
+  "direct_dependency_maintenance": [
+    {
+      "package": "laravel/framework",
+      "locked": "v12.70.1",
+      "last_upstream_release_in_channel": "13.38.0 (2026-10-20)",
+      "observation": "Locked on the 12.x channel although composer.json:22 requires ^12.69; behind the current major but no advisory applies.",
+      "dependency_type": "production"
+    },
+    {
+      "package": "guzzlehttp/guzzle",
+      "locked": "7.16.0",
+      "observation": "Above the advisory ranges observed for 7.x (<7.15.1 / <7.15.2); current major is 8.3.0 but 7.x remains patched.",
+      "dependency_type": "production"
+    },
+    {
+      "package": "xhat/payjs-laravel",
+      "locked": "1.6.0",
+      "last_upstream_release": "1.6.0, 2020-11-18",
+      "observation": "Payment-provider SDK (composer.json:27) with no upstream release in ~6 years; no advisory applies, but security fixes are unlikely. Payment callback/verification code paths around it warrant manual review.",
+      "dependency_type": "production"
+    },
+    {
+      "package": "jenssegers/agent",
+      "locked": "v2.6.4",
+      "last_upstream_release": "v2.6.4, 2020-06-13",
+      "observation": "User-Agent parser last released 2020; parses attacker-controlled headers (input-side only, no advisory).",
+      "dependency_type": "production"
+    },
+    {
+      "package": "simplesoftwareio/simple-qrcode",
+      "locked": "4.2.0",
+      "last_upstream_release": "4.2.0, 2021-02-08",
+      "observation": "Stale but small QR generation wrapper; no advisory.",
+      "dependency_type": "production"
+    },
+    {
+      "package": "dcat/easy-excel",
+      "locked": "1.1.0",
+      "last_upstream_release": "1.1.0, 2022-03-03",
+      "observation": "Pulls abandoned box/spout; spreadsheet import handles uploaded files (upload-side attack surface, no advisory).",
+      "dependency_type": "production"
+    }
+  ],
+  "coverage_gaps": [
+    {
+      "gap": "Version-based advisory matching only (composer audit + OSV). No reachability/usage analysis proving whether vulnerable code paths (if any were reported) are actually called.",
+      "impact": "A future advisory would need manual exploitation review."
+    },
+    {
+      "gap": "cve.circl.lu source returned total_count 0 even for the guzzle 7.4.0 control query, so that data source is effectively non-contributing in this run.",
+      "impact": "No additional NVD-side corroboration was obtained beyond composer audit + OSV.dev."
+    },
+    {
+      "gap": "Frontend dependencies (package.json / webpack.mix.js, npm devDependencies) were not audited in this dependencies pass.",
+      "impact": "Build-time JS supply chain and any bundled JS CVE exposure are unassessed; recommend a separate npm audit pass."
+    },
+    {
+      "gap": "No vulnerability scan of the container base image (webdevops/php-nginx:8.3, Dockerfile:1) OS packages was performed; only PHP extensions were enumerated.",
+      "impact": "OS-level package CVEs (Debian packages in the image) are out of scope for this artifact."
+    },
+    {
+      "gap": "composer.lock is the scanned object; vendor/ is not tracked in git, so the exact shipped vendor tree depends on the Docker build (Dockerfile:9). A deployment that rsyncs the local vendor/ (which currently includes dev packages) would differ from the audited dependency set.",
+      "impact": "Deployment-artifact verification needed to rely on the 'no advisories' result for production."
+    },
+    {
+      "gap": "Advisory feed snapshot is 2026-10-24; results must be re-run before release.",
+      "impact": "Standard staleness caveat."
+    }
+  ],
+  "notes": [
+    "CR-5 compliance: advisories is an empty array because both independent scanners returned zero matches; no CVE id was invented.",
+    "No .env file values, cookies, or API keys were read or copied into this artifact; only .env.example default non-secret flags (APP_ENV/APP_DEBUG at lines 2 and 4) are referenced.",
+    "Production vs dev separation in this artifact follows composer.lock `packages` (composer.lock:8, 96 entries) vs `packages-dev` (composer.lock:7365, 36 entries); the vuln_intel.sh helper reports is_dev=false for everything."
+  ]
+}
