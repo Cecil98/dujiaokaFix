@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Service\SystemSettingService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
 
 class PersistSystemSettings extends Command
 {
@@ -14,7 +13,7 @@ class PersistSystemSettings extends Command
 
     public function handle(): int
     {
-        $settings = Cache::get(SystemSettingService::CACHE_KEY);
+        $settings = SystemSettingService::get();
 
         if (! is_array($settings) || $settings === []) {
             $this->warn('No system-setting cache found. Open admin -> System Setting and save once, or restore a backup.');
