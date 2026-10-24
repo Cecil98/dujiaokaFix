@@ -19,6 +19,9 @@ class VerifyCsrfToken extends Middleware
      * @var array
      */
     protected $except = [
-        'pay/*',
+        // Only gateway callbacks/returns are exempt. Do not exempt every
+        // pay/* endpoint: POST charge/initiation endpoints must keep CSRF.
+        'pay/*/notify_url',
+        'pay/*/return_url',
     ];
 }

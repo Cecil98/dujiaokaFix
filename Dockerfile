@@ -11,12 +11,13 @@ RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoload
 RUN printf '%s\n' \
     '#!/bin/sh' \
     'set -e' \
-    'if [ "$INSTALL" != "true" ] && [ ! -d /app/install.lock ]; then echo ok > /app/install.lock; fi' \
+    'if [ "$INSTALL" != "true" ] && [ ! -e /app/install.lock ]; then echo ok > /app/install.lock; fi' \
     'su application -s /bin/sh -c "php artisan queue:work --tries=3" >/tmp/work.log 2>&1 &' \
     'exec supervisord' > /app/start.sh \
     && chmod +x /app/start.sh
 
 COPY conf/dujiaoka-nginx.conf /opt/docker/etc/nginx/vhost.common.d/20-dujiaoka-security.conf
+COPY conf/php.ini /usr/local/etc/php/conf.d/zz-dujiaoka.ini
 
 RUN mkdir -p /app/storage /app/bootstrap/cache /app/public/uploads \
     && chown -R root:root /app \

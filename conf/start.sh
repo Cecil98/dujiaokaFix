@@ -25,7 +25,7 @@ mkdir -p \
 
 chown -R application:application /app/storage /app/bootstrap/cache /app/public/uploads
 
-if [ "$INSTALL" != "true" ] && [ ! -d /app/install.lock ]; then
+if [ "$INSTALL" != "true" ] && [ ! -e /app/install.lock ]; then
     echo "ok" > /app/install.lock
 fi
 
