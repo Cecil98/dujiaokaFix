@@ -1,45 +1,34 @@
-FROM alpine:3.20
+# ARM64 variant of Dockerfile: same layout, Alpine-based multi-arch webdevops image.
+# Build on an ARM host, or with:
+#   docker buildx build --platform linux/arm64 -f Dockerfile-ARM64 -t <tag> .
 
-LABEL maintainer="dujiaokaFix"
+FROM webdevops/php-nginx:8.3-alpine
 
-ENV TZ=Asia/Shanghai \
-    INSTALL=false \
-    COMPOSER_ALLOW_SUPERUSER=1 \
-    COMPOSER_MEMORY_LIMIT=-1
-
-RUN apk --no-cache add bash php83 php83-fpm php83-opcache php83-mysqli php83-pdo_mysql \
-    php83-bcmath php83-gd php83-zip php83-intl php83-dom php83-xml php83-xmlreader \
-    php83-xmlwriter php83-simplexml php83-ctype php83-session php83-tokenizer \
-    php83-fileinfo php83-mbstring php83-curl php83-openssl php83-phar php83-pcntl \
-    php83-iconv php83-sodium php83-pecl-redis php83-pecl-imagick nginx supervisor curl git unzip tzdata \
-    && adduser -D -g '' application \
-    && mkdir -p /run/nginx /etc/supervisor/conf.d
-
-WORKDIR /app
+ENV WEB_DOCUMENT_ROOT=/app/public \
+    INSTALL=false
 
 COPY . /app
-COPY conf/default.conf /etc/nginx/http.d/default.conf
-COPY conf/fpm-pool.conf /etc/php83/php-fpm.d/www.conf
-COPY conf/php.ini /etc/php83/conf.d/custom.ini
-COPY conf/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY conf/start.sh /start.sh
-COPY conf/start-hook.sh /app/start-hook.sh
+WORKDIR /app
 
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
-RUN set -xe \
-    && composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader \
-    && mv /app/storage /app/storage_bak \
-    && mkdir -p /app/storage /app/public/uploads /app/bootstrap/cache \
-    && rm -f /app/.env \
+RUN printf '%s\n' \
+    '#!/bin/sh' \
+    'set -e' \
+    'if [ "$INSTALL" != "true" ] && [ ! -e /app/install.lock ]; then echo ok > /app/install.lock; fi' \
+    'su application -s /bin/sh -c "php artisan queue:work --tries=3" >/tmp/work.log 2>&1 &' \
+    'exec supervisord' > /app/start.sh \
+    && chmod +x /app/start.sh
+
+COPY conf/dujiaoka-nginx.conf /opt/docker/etc/nginx/vhost.common.d/20-dujiaoka-security.conf
+COPY conf/php.ini /usr/local/etc/php/conf.d/zz-dujiaoka.ini
+
+RUN mkdir -p /app/storage /app/bootstrap/cache /app/public/uploads \
     && chown -R root:root /app \
-    && chown -R application:application /app/storage /app/storage_bak /app/bootstrap/cache /app/public/uploads \
+    && chown -R application:application /app/storage /app/bootstrap/cache /app/public/uploads \
     && find /app -type d -exec chmod 0755 {} + \
     && find /app -type f -exec chmod 0644 {} + \
-    && chmod +x /start.sh /app/start-hook.sh \
-    && chmod -R 0775 /app/storage /app/storage_bak /app/bootstrap/cache /app/public/uploads \
-    && rm -rf /root/.composer/cache /tmp/*
+    && chmod +x /app/start.sh \
+    && chmod -R 0775 /app/storage /app/bootstrap/cache /app/public/uploads
 
-EXPOSE 80
-
-ENTRYPOINT [ "/start.sh" ]
+CMD [ "sh", "-c", "/app/start.sh" ]

@@ -1,5 +1,6 @@
 services:
   web:
+    image: dujiaoka:2.1.0-php83-arm64
     platform: linux/arm64
     build:
       context: .
