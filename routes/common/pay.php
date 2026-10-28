@@ -25,8 +25,8 @@ Route::group(['prefix' => 'pay', 'namespace' => 'Pay', 'middleware' => ['dujiaok
     Route::post('payjs/notify_url', 'PayjsController@notifyUrl');
     // 易支付
     Route::get('yipay/{payway}/{orderSN}', 'YipayController@gateway');
-    Route::get('yipay/notify_url', 'YipayController@notifyUrl');
-    Route::get('yipay/return_url', 'YipayController@returnUrl')->name('yipay-return');
+    Route::get('yipay/notify_url', 'YipayController@notifyUrl')->middleware('throttle:120,1');
+    Route::get('yipay/return_url', 'YipayController@returnUrl')->middleware('throttle:30,1')->name('yipay-return');
     // V免签
     Route::get('vpay/{payway}/{orderSN}', 'VpayController@gateway');
     Route::get('vpay/notify_url', 'VpayController@notifyUrl');

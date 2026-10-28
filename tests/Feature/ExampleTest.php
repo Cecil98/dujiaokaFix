@@ -30,6 +30,20 @@ class ExampleTest extends TestCase
         }
     }
 
+    public function testEpayCallbackAndReturnAreRateLimited(): void
+    {
+        foreach (['pay/yipay/notify_url', 'pay/yipay/return_url'] as $uri) {
+            $route = collect(Route::getRoutes()->getRoutes())->first(
+                fn ($route) => $route->uri() === $uri
+            );
+            $this->assertNotNull($route, $uri.' route must exist');
+            $this->assertTrue(
+                collect($route->gatherMiddleware())->contains(fn ($m) => str_starts_with($m, 'throttle:')),
+                $uri.' must be throttled even though Anubis ALLOWs /pay/*'
+            );
+        }
+    }
+
     public function testOnlyEpayGatewayRoutesAreRegistered(): void
     {
         $uris = collect(Route::getRoutes()->getRoutes())->map(fn ($route) => $route->uri());
